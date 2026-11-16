@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clean Ears</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <img src="icons/icon32.png" alt="" width="22" height="22" />
+        <h1>Clean Ears</h1>
+      </div>
+      <label class="switch" title="Turn the filter on or off">
+        <input type="checkbox" id="enabled" />
+        <span></span>
+      </label>
+    </header>
+
+    <section id="status" class="status">
+      <div class="status-line"><span id="status-dot" class="dot"></span><span id="status-text">Checking…</span></div>
+      <div id="status-detail" class="status-detail"></div>
+      <ul id="recent" class="recent"></ul>
+    </section>
+
+    <section>
+      <h2>When a word is caught</h2>
+      <div class="segmented" role="radiogroup">
+        <label><input type="radio" name="mode" value="bleep" /><span>Bleep</span></label>
+        <label><input type="radio" name="mode" value="silence" /><span>Silence</span></label>
+      </div>
+      <div id="volume-row" class="row">
+        <label for="bleepVolume">Bleep volume</label>
+        <input type="range" id="bleepVolume" min="0.05" max="0.6" step="0.05" />
+      </div>
+    </section>
+
+    <section>
+      <div class="row">
+        <label for="delay">Delay</label>
+        <span id="delay-value" class="value"></span>
+      </div>
+      <label class="inline-check"><input type="checkbox" id="autoDelay" /> Automatic – as close to real time as this computer allows</label>
+      <input type="range" id="delay" min="1" max="6" step="0.5" />
+      <p class="hint" id="delay-hint"></p>
+      <div class="row spaced">
+        <label for="cover">Word cover</label>
+        <span id="cover-value" class="value"></span>
+      </div>
+      <input type="range" id="cover" min="0.1" max="0.6" step="0.05" />
+      <p class="hint">Extra silence before and after each caught word. Raise it if you still hear the start or end of a word.</p>
+    </section>
+
+    <section>
+      <label for="model" class="label">Speech model</label>
+      <select id="model"></select>
+      <p class="hint">Runs entirely on your computer. Downloaded once, then cached.</p>
+    </section>
+
+    <section>
+      <div class="row">
+        <label for="words" class="label">Words to filter</label>
+        <button id="reset-words" class="link" type="button">Reset to defaults</button>
+      </div>
+      <textarea id="words" rows="8" spellcheck="false"></textarea>
+      <p class="hint">One per line. <code>*</code> is a wildcard (<code>*fuck*</code> also catches “motherfucker”). Phrases with spaces work too.</p>
+    </section>
+
+    <section class="checks">
+      <label><input type="checkbox" id="muteUntilReady" /> Mute the sound until the filter is ready</label>
+      <label><input type="checkbox" id="showBadge" /> Show status label on the video</label>
+    </section>
+
+    <script src="settings.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

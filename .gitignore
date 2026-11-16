@@ -1,0 +1,7 @@
+# Local install copy of the extension (the repo root is the extension itself)
+Clean-Ears-Extension/
+
+# macOS / editor / tooling
+.DS_Store
+.claude/
+*.zip
