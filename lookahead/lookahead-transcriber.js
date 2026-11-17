@@ -41,9 +41,12 @@
     start() {
       if (this.running) return;
       this.running = true;
-      this.loop();
+      this.generation = (this.generation || 0) + 1;
+      this.loop(this.generation);
     }
 
+    // A request already in flight finishes, but its loop then exits, so a
+    // quick stop() + start() never leaves two loops running.
     stop() {
       this.running = false;
     }
@@ -74,8 +77,8 @@
       return { from, to: from + len, audioFrom: from - left, audioTo: from + len + right };
     }
 
-    async loop() {
-      while (this.running) {
+    async loop(generation) {
+      while (this.running && generation === this.generation) {
         const job = this.next();
         if (!job) {
           await new Promise((r) => setTimeout(r, this.idleMs));

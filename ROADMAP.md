@@ -168,11 +168,41 @@ feel real-time" below for the options and why lookahead capture was chosen.
       also checks that no word is lost or duplicated at window seams or after
       a seek. That bug was found and fixed here: a word right on a seam could
       be timed just outside both windows.
-- [ ] **1.5 Zero-delay playback when ahead.** If the timeline already covers
+- [x] **1.5 Zero-delay playback when ahead.** If the timeline already covers
       the next few seconds, play with no delay and schedule mutes against
       `currentTime`. Fall back to the existing delay line only when it doesn't
       (just after a seek, live streams, DRM).
       *Done when:* steady-state delay is 0 s and no swear is heard in the test set.
+      **Result (2026-11-17):** wired into the extension (v1.1.0):
+      [`lookahead/main-bridge.js`](lookahead/main-bridge.js) runs in YouTube's
+      page ("world": "MAIN") and streams the decoded buffered audio to the
+      content script, which transcribes ahead through the offscreen worker and
+      plays with **no delay** when the transcript covers ≥ 3 s ahead
+      (real video shown, mutes timed by ClockSync). After a seek it holds
+      playback briefly (≤ 4 s, like buffering) until the transcript catches up,
+      else falls back to the delay line. A video that starts in delay mode
+      (model still loading) switches once by seeking back to what's on screen.
+      Popup: "Read ahead – no delay when the transcript is ready" (on by default).
+
+      **Real YouTube, in Chrome with the installed extension** (silent output
+      via the `#cleanears-silent-test` hook; a 33-min Kitchen Nightmares clip):
+
+      | Measure | Result |
+      |---|---|
+      | Delay during playback | **0 s** throughout |
+      | Transcript lead | 26–103 s (limited by YouTube's download bursts) |
+      | Skip to 10:00 (not yet downloaded) | YouTube had 20 s within 1 s; held 1.8 s, then no delay |
+      | Pause, model unloaded while idle, resume | reconnected and continued with no delay |
+      | Swears caught (unbleeped: "ass", "pissed", "fucking") | 3, each mute scheduled ~4.9 s early; 0 late, 0 missed |
+      | Self-calibration vs the player's real audio | r 0.996–0.998, offset 0 ms |
+
+      Local harness ([`tests/extension/harness.html`](tests/extension/harness.html),
+      real content script + bridge, stubbed chrome APIs): 16 swears over a
+      start, a model-loading switch and a skip, 0 late, 0 missed. Found and
+      fixed there: resuming inside a swear's cover now mutes immediately, and
+      the first hold allows 4 s because the first Whisper pass after loading
+      is slow.
+      Not yet tested: live streams and DRM videos (1.7), ads mid-video.
 - [ ] **1.6 Transcript cache per video.** Save the word timeline by video ID
       (IndexedDB) so rewatching and seeking back are instant.
       *Done when:* a second viewing starts with 0 s delay from the first frame.
@@ -203,7 +233,7 @@ this role. `yt-dlp` only comes into play if we add a local companion app
 
 - [x] 3.1 Delay line for audio and video
 - [x] 3.2 Automatic, per-computer delay
-- [ ] 3.3 Shrinks to 0 when step 1's lookahead covers playback
+- [x] 3.3 Shrinks to 0 when step 1's lookahead covers playback (step 1.5)
 
 ## 4. Source separation (MDX-Net small / Spleeter)
 
@@ -301,7 +331,7 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
 
 - [x] 13.1 Delayed video canvas in sync with the filtered audio
 - [x] 13.2 Pause, seek and skip relative to what's on screen
-- [ ] 13.3 With step 1 done: no visible delay in steady state
+- [x] 13.3 With step 1 done: no visible delay in steady state (step 1.5)
 
 ---
 

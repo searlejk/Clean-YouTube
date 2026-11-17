@@ -7,16 +7,20 @@
 // which <video>/<audio> element it feeds, found through the blob: URL the page
 // attached with URL.createObjectURL.
 //
-//   const tap = MseTap.install({ onStream: (s) => ... });
-//   s.timeline, s.element(), s.stats()
+//   const tap = MseTap.install({ onStream: (s) => ..., onPcm: (s, chunk) => ..., timeline: true });
+//   s.timeline, s.src(), s.element(), s.stats()
 //
-// Requires webm-opus-demuxer.js, opus-pcm-decoder.js and pcm-timeline.js.
+// With `timeline: false` decoded audio isn't stored here, only handed to
+// `onPcm` (the extension's page bridge forwards it instead).
+//
+// Requires webm-opus-demuxer.js and opus-pcm-decoder.js (+ pcm-timeline.js
+// unless `timeline: false`).
 (function (root) {
   let installed = null;
 
-  function install({ onStream } = {}) {
+  function install({ onStream, onPcm, timeline: keepTimeline = true } = {}) {
     if (installed) return installed;
-    const tap = { streams: [], onStream: onStream || (() => {}) };
+    const tap = { streams: [], onStream: onStream || (() => {}), onPcm: onPcm || null };
     const urlOf = new WeakMap(); // MediaSource -> blob URL
 
     const origCreateURL = URL.createObjectURL;
@@ -31,13 +35,19 @@
       const sb = origAdd.call(this, mime);
       if (/^audio\/webm/i.test(mime) && /opus/i.test(mime)) {
         const mediaSource = this;
-        const timeline = new PcmTimeline();
-        const decoder = new OpusPcmDecoder({ onPcm: (c) => timeline.add(c) });
+        const timeline = keepTimeline ? new PcmTimeline() : null;
+        let stream = null;
+        const decoder = new OpusPcmDecoder({
+          onPcm: (c) => {
+            if (timeline) timeline.add(c);
+            if (tap.onPcm) tap.onPcm(stream, c);
+          },
+        });
         const demuxer = new WebmOpusDemuxer({
           onConfig: (c) => decoder.configure(c),
           onFrame: (f) => decoder.decode(f),
         });
-        const stream = {
+        stream = {
           mime,
           timeline,
           decoder,
@@ -46,6 +56,9 @@
           aborts: 0,
           errors: 0,
           created: performance.now(),
+          src() {
+            return urlOf.get(mediaSource) || null;
+          },
           element() {
             const url = urlOf.get(mediaSource);
             return url ? [...document.querySelectorAll('video, audio')].find((el) => el.src === url) || null : null;

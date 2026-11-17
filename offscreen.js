@@ -4,7 +4,32 @@ const ports = new Map(); // session id -> port
 let nextSession = 1;
 let lastStatus = null;
 
+// Lookahead transcription requests (roadmap step 1.5): worker job id -> the
+// tab's port and the id the tab used.
+const jobs = new Map();
+let nextJob = 1;
+
+// Audio for lookahead requests arrives as base64 16-bit PCM to keep port
+// messages small.
+function pcm16ToFloat32(b64) {
+  const bin = atob(b64);
+  const out = new Float32Array(bin.length >> 1);
+  for (let i = 0; i < out.length; i++) {
+    let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+    if (v & 0x8000) v -= 0x10000;
+    out[i] = v / 32768;
+  }
+  return out;
+}
+
 worker.onmessage = ({ data }) => {
+  if (data.type === 'transcribed') {
+    const job = jobs.get(data.id);
+    jobs.delete(data.id);
+    const port = job && ports.get(job.session);
+    if (port) safePost(port, { ...data, id: job.id });
+    return;
+  }
   if (data.type === 'status') {
     lastStatus = data;
     for (const port of ports.values()) safePost(port, data);
@@ -38,6 +63,11 @@ chrome.runtime.onConnect.addListener((port) => {
     if (msg.type === 'audio') {
       const samples = new Float32Array(msg.samples);
       worker.postMessage({ type: 'audio', session, samples }, [samples.buffer]);
+    } else if (msg.type === 'transcribe') {
+      const job = nextJob++;
+      jobs.set(job, { session, id: msg.id });
+      const samples = pcm16ToFloat32(msg.pcm16);
+      worker.postMessage({ type: 'transcribe', id: job, samples, offset: msg.offset }, [samples.buffer]);
     } else {
       worker.postMessage({ ...msg, session });
     }
@@ -45,6 +75,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onDisconnect.addListener(() => {
     ports.delete(session);
+    for (const [job, j] of jobs) if (j.session === session) jobs.delete(job);
     worker.postMessage({ type: 'close', session });
     scheduleIdleCheck();
   });

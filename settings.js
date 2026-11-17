@@ -57,6 +57,7 @@
     enabled: true,
     mode: 'bleep', // 'bleep' | 'silence'
     words: DEFAULT_WORDS,
+    lookahead: true, // read YouTube's downloaded audio ahead of time: no delay when possible
     autoDelay: true, // pick the shortest safe delay for this computer
     delay: 3, // seconds the video and audio are held back when autoDelay is off
     model: 'tiny.en',

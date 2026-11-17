@@ -25,6 +25,7 @@ function render(s) {
   for (const r of document.querySelectorAll('input[name="mode"]')) r.checked = r.value === s.mode;
   $('volume-row').style.display = s.mode === 'bleep' ? '' : 'none';
   $('bleepVolume').value = s.bleepVolume;
+  $('lookahead').checked = s.lookahead;
   $('autoDelay').checked = s.autoDelay;
   $('delay').value = s.delay;
   $('delay').disabled = s.autoDelay;
@@ -65,6 +66,7 @@ async function init() {
   });
   $('delay').addEventListener('change', (e) => save({ delay: Number(e.target.value) }));
   $('autoDelay').addEventListener('change', (e) => save({ autoDelay: e.target.checked }));
+  $('lookahead').addEventListener('change', (e) => save({ lookahead: e.target.checked }));
   $('cover').addEventListener('input', (e) => {
     $('cover-value').textContent = `${Number(e.target.value).toFixed(2)} s`;
   });
@@ -115,7 +117,10 @@ async function pollStatus() {
     setStatus('', 'Open a YouTube video', 'If a video is already open, reload the page once.');
     return;
   }
-  if (st.autoDelay && st.delay) {
+  if (st.mode === 'lookahead') {
+    liveDelay = 0;
+    $('delay-value').textContent = 'None · reading ahead';
+  } else if (st.autoDelay && st.delay) {
     liveDelay = st.delay;
     $('delay-value').textContent = `Auto · ${st.delay.toFixed(1)} s`;
   }

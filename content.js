@@ -6,6 +6,11 @@
 // The picture is held back by the same amount by drawing delayed frames onto a
 // canvas laid over the (hidden) real video. Because Whisper hears the audio
 // `delay` seconds before you do, swear words can be muted or bleeped on time.
+//
+// Lookahead mode (roadmap step 1.5) removes the delay: lookahead/main-bridge.js
+// hands over the audio YouTube has already downloaded, Whisper transcribes it
+// before it plays, and mutes are placed by video time. The delay line is the
+// fallback (see "lookahead mode" below).
 (() => {
   if (window.__cleanEarsLoaded) return;
   window.__cleanEarsLoaded = true;
@@ -96,7 +101,8 @@
       currentDelay = targetDelay();
       return;
     }
-    const delayChanged = setDelay(targetDelay());
+    if (mode === 'lookahead' && !settings.lookahead) enterDelayMode();
+    const delayChanged = setDelay(mode === 'lookahead' ? 0 : targetDelay());
     if (initial || prev.enabled !== settings.enabled || delayChanged) {
       delayNode.delayTime.setValueAtTime(settings.enabled ? currentDelay : 0, ctx.currentTime);
       route();
@@ -104,7 +110,7 @@
     }
     reschedule();
     updateReadyGate();
-    for (const d of delayers) d.setActive(settings.enabled);
+    for (const d of delayers) d.setActive(settings.enabled && mode === 'delay');
     updateBadges();
   }
 
@@ -194,9 +200,21 @@
   let inputBus, delayNode, censorGain, flushGain, readyGain, bleepGain, captureNode;
   let routedToDelay = null;
 
+  // Test hook: a page opened with #cleanears-silent-test (remembered for the
+  // tab) gets an AudioContext with no output device, so automated tests never
+  // play sound, and publishes diagnostics on <html data-clean-ears>.
+  const SILENT_TEST = (() => {
+    try {
+      if (location.hash.includes('cleanears-silent-test')) sessionStorage.setItem('cleanears-silent-test', '1');
+      return sessionStorage.getItem('cleanears-silent-test') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
   function ensureAudio() {
     if (ctx) return;
-    ctx = new AudioContext({ latencyHint: 'playback' });
+    ctx = new AudioContext(SILENT_TEST ? { latencyHint: 'playback', sinkId: { type: 'none' } } : { latencyHint: 'playback' });
     inputBus = ctx.createGain();
     delayNode = ctx.createDelay(10);
     delayNode.delayTime.value = settings.enabled ? currentDelay : 0;
@@ -319,7 +337,10 @@
   let anchors = []; // [{ index, time }] maps sample index → AudioContext time
 
   function onCapture(samples, time) {
-    if (!settings.enabled || !port || !anyPlaying()) return;
+    if (!settings.enabled) return;
+    const look = lookFor(activeVideo());
+    if (look) look.sync.noteCapture(time, samples, ctx.sampleRate);
+    if (mode !== 'delay' || !port || !anyPlaying()) return;
     if (!downsampler) downsampler = new Downsampler(ctx.sampleRate, SR);
     const out = downsampler.process(samples);
     if (!out.length) return;
@@ -383,6 +404,8 @@
       port.onMessage.addListener(onEngineMessage);
       port.onDisconnect.addListener(() => {
         port = null;
+        for (const job of transcribeJobs.values()) job.reject(new Error('engine disconnected'));
+        transcribeJobs.clear();
         state.engine = 'disconnected';
         updateReadyGate();
         updateBadges();
@@ -400,6 +423,17 @@
   }
 
   function onEngineMessage(msg) {
+    if (msg.type === 'transcribed') {
+      const job = transcribeJobs.get(msg.id);
+      transcribeJobs.delete(msg.id);
+      if (!job) return;
+      if (msg.error) job.reject(new Error(msg.error));
+      else {
+        state.processingMs = state.processingMs ? state.processingMs * 0.8 + msg.processingMs * 0.2 : msg.processingMs;
+        job.resolve(msg);
+      }
+      return;
+    }
     if (msg.type === 'status') {
       state.engine = msg.state;
       state.progress = msg.progress ?? state.progress;
@@ -459,13 +493,15 @@
     if (e <= now) {
       if (!seen) {
         state.missed++;
-        lateBump += LATE_BUMP;
-        growDelayIfNeeded(true);
+        if (mode === 'delay') {
+          lateBump += LATE_BUMP;
+          growDelayIfNeeded(true);
+        }
       }
       return;
     }
     if (!seen) {
-      if (s < now) {
+      if (s < now && mode === 'delay') {
         lateBump += LATE_BUMP;
         setTimeout(() => growDelayIfNeeded(true), 0);
       }
@@ -944,7 +980,7 @@
     if (existing !== undefined) {
       if (existing && !delayers.has(existing)) {
         delayers.add(existing);
-        existing.setActive(settings.enabled);
+        existing.setActive(settings.enabled && mode === 'delay');
       }
       return;
     }
@@ -959,7 +995,7 @@
     const d = new VideoDelay(video);
     hooked.set(video, d);
     delayers.add(d);
-    d.setActive(settings.enabled);
+    d.setActive(settings.enabled && mode === 'delay');
 
     let internalSeek = false;
     const seekTo = (t) => {
@@ -974,16 +1010,21 @@
       staleBefore = ctx.currentTime;
       prevWindowEnd = -Infinity;
       d.clear();
-      if (settings.enabled) setDelay(targetDelay());
-      flush();
+      clearLookaheadMutes();
       if (port) port.postMessage({ type: 'reset' });
+      if (mode === 'delay') {
+        if (settings.enabled) setDelay(targetDelay());
+        flush();
+      }
     };
+    d.seekTo = seekTo;
+    d.isInternal = () => performance.now() < (video.__ceInternalUntil || 0);
 
     video.addEventListener('seeking', () => {
       // The real playhead runs `delay` ahead of the picture, so YouTube's
       // "back 5 s" would land only ~2 s before what you were watching. Redo
       // keyboard skips relative to what's on screen.
-      if (!internalSeek && settings.enabled && d.lastMediaTime != null && performance.now() - lastRelativeKeyAt < 700) {
+      if (!internalSeek && settings.enabled && currentDelay > 0 && d.lastMediaTime != null && performance.now() - lastRelativeKeyAt < 700) {
         lastRelativeKeyAt = 0;
         // The playhead has already moved; work from the picture shown before it.
         const step = video.currentTime - d.lastMediaTime;
@@ -995,6 +1036,7 @@
         }
       }
       discontinuity();
+      if (!video.paused) chooseMode(video, d);
     });
     video.addEventListener('seeked', () => {
       internalSeek = false;
@@ -1007,7 +1049,10 @@
     // delayed part play out) and rewinds the real playhead to the frame on
     // screen, so nothing is skipped when you press play again.
     video.addEventListener('pause', () => {
-      if (!settings.enabled || video.ended || internalSeek) return;
+      if (!settings.enabled || video.ended || internalSeek || d.isInternal()) return;
+      if (holding && holding.video === video) holding = null; // user paused during a hold
+      clearLookaheadMutes();
+      if (mode === 'lookahead') return; // no delay: nothing still to play out
       d.frozen = true;
       staleBefore = ctx.currentTime;
       flush();
@@ -1017,12 +1062,10 @@
     video.addEventListener('play', () => {
       d.frozen = false;
       if (ctx.state !== 'running') ctx.resume().catch(() => {});
-      if (settings.enabled) {
-        setDelay(targetDelay());
-        flush();
-      }
       lastPlayingAt = Date.now();
       connectEngine();
+      if (d.isInternal() || !settings.enabled) return;
+      chooseMode(video, d);
     });
     if (!video.paused) connectEngine();
     updateBadges();
@@ -1053,6 +1096,298 @@
   document.addEventListener('yt-navigate-finish', scan);
   setInterval(scan, 1500);
 
+  // ───────────────────────── lookahead mode (no delay) ─────────────────────────
+  //
+  // The page bridge (lookahead/main-bridge.js) streams the audio YouTube has
+  // already downloaded. It's transcribed ahead of the playhead (step 1.4) and,
+  // when the transcript covers the next LOOKAHEAD_MIN seconds, the video plays
+  // with no delay: the real <video> is shown and mutes are scheduled by video
+  // time through ClockSync (step 1.3). After a seek it holds playback briefly
+  // (like buffering) until the transcript catches up; if it can't within
+  // HOLD_MAX_MS, or the page's audio can't be read (live, DRM), the delay line
+  // above takes over.
+  const LOOKAHEAD_MIN = 3; // seconds of transcript needed ahead to play without delay
+  const LOOKAHEAD_GUARD = 1; // hold again if it gets this thin mid-play
+  const HOLD_MAX_MS = 4000; // the first Whisper pass after loading can take ~3 s
+  const SCHEDULE_AHEAD = 6; // upcoming seconds of words turned into mutes
+  let mode = 'delay'; // 'delay' | 'lookahead'
+  let holding = null; // { video } while playback is held for the transcript
+  let lastCalibration = 0;
+  let lastUpgradeTry = 0;
+  const looks = new Map(); // player blob: URL -> { timeline, words, sync, transcriber, scheduled }
+  const transcribeJobs = new Map();
+  let nextTranscribeId = 1;
+
+  function activeVideo() {
+    let fallback = null;
+    for (const d of delayers) {
+      if (!d.video.paused && !d.video.ended) return d.video;
+      if (d.video.matches('#movie_player video, .html5-main-video')) fallback = d.video;
+    }
+    return fallback;
+  }
+
+  function videoForSrc(src) {
+    for (const d of delayers) if (d.video.src === src) return d.video;
+    return null;
+  }
+
+  function delayerFor(video) {
+    for (const d of delayers) if (d.video === video) return d;
+    return null;
+  }
+
+  function lookFor(video) {
+    return video && video.src ? looks.get(video.src) || null : null;
+  }
+
+  // Seconds of transcript ahead of the playhead (everything, if it reaches the end).
+  function transcriptAhead(look, video) {
+    const ahead = look.words.aheadOf(video.currentTime);
+    const left = (Number.isFinite(video.duration) ? video.duration : Infinity) - video.currentTime;
+    return ahead >= left - 0.1 ? Infinity : ahead;
+  }
+
+  function float32ToPcm16Base64(x) {
+    const bytes = new Uint8Array(x.length * 2);
+    for (let i = 0; i < x.length; i++) {
+      const v = Math.max(-32768, Math.min(32767, Math.round(x[i] * 32767)));
+      bytes[2 * i] = v & 0xff;
+      bytes[2 * i + 1] = (v >> 8) & 0xff;
+    }
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  function requestTranscribe(samples, offset) {
+    return new Promise((resolve, reject) => {
+      if (!port || state.engine !== 'ready') return reject(new Error('engine not ready'));
+      const id = nextTranscribeId++;
+      transcribeJobs.set(id, { resolve, reject });
+      port.postMessage({ type: 'transcribe', id, offset, pcm16: float32ToPcm16Base64(samples) });
+    });
+  }
+
+  function createLook(src) {
+    const timeline = new PcmTimeline({ keepBehind: 30, keepAhead: 600 });
+    const words = new WordTimeline();
+    const sync = new ClockSync({ timeline });
+    const look = { src, timeline, words, sync, scheduled: new Set() };
+    look.transcriber = new LookaheadTranscriber({
+      timeline,
+      words,
+      transcribe: requestTranscribe,
+      playhead: () => videoForSrc(src)?.currentTime ?? null,
+      duration: () => {
+        const v = videoForSrc(src);
+        return v && Number.isFinite(v.duration) ? v.duration : Infinity;
+      },
+    });
+    looks.set(src, look);
+    for (const [k, l] of looks) {
+      if (k !== src && !videoForSrc(k)) {
+        l.transcriber.stop();
+        looks.delete(k);
+      }
+    }
+    return look;
+  }
+
+  window.addEventListener('message', (e) => {
+    const m = e.data;
+    if (e.source !== window || !m || m.__cleanEars !== 1 || m.type !== 'pcm') return;
+    if (!settings.enabled || !settings.lookahead || !(m.samples instanceof Float32Array)) return;
+    const look = looks.get(m.src) || createLook(m.src);
+    look.timeline.add({ time: m.time, samples: m.samples });
+  });
+
+  function clearLookaheadMutes() {
+    for (const look of looks.values()) look.scheduled.clear();
+    if (mode === 'lookahead' && ctx) {
+      intervals = [];
+      reschedule();
+    }
+  }
+
+  function enterLookahead(video) {
+    mode = 'lookahead';
+    setDelay(0);
+    if (video) muteIfResumingInsideSwear(video);
+    if (ctx) {
+      const g = flushGain.gain; // nothing stale to hide with no delay
+      g.cancelScheduledValues(ctx.currentTime);
+      g.setTargetAtTime(1, ctx.currentTime, 0.005);
+      flushUntil = 0;
+    }
+    for (const x of delayers) x.setActive(false); // show the real video
+    updateBadges();
+  }
+
+  function enterDelayMode() {
+    const wasLookahead = mode === 'lookahead';
+    mode = 'delay';
+    setDelay(targetDelay());
+    for (const x of delayers) x.setActive(settings.enabled);
+    if (wasLookahead) {
+      intervals = [];
+      reschedule();
+    }
+    flush();
+    updateBadges();
+  }
+
+  function internalPause(video) {
+    video.__ceInternalUntil = performance.now() + 400;
+    video.pause();
+  }
+
+  function internalPlay(video) {
+    video.__ceInternalUntil = performance.now() + 400;
+    video.play().catch(() => {});
+  }
+
+  // Decide how to play from here (on play and after seeks).
+  function chooseMode(video, d) {
+    const look = lookFor(video);
+    const available = settings.lookahead && look && port && state.engine === 'ready';
+    if (!available) {
+      if (mode === 'lookahead') enterDelayMode();
+      else {
+        setDelay(targetDelay());
+        flush();
+      }
+      return;
+    }
+    if (transcriptAhead(look, video) >= LOOKAHEAD_MIN) enterLookahead(video);
+    else holdForTranscript(video);
+  }
+
+  // Playback resuming (after a hold or seek) part-way through a swear's cover
+  // would let the rest of it through before the next scheduling tick: mute now.
+  function muteIfResumingInsideSwear(video) {
+    const look = lookFor(video);
+    if (!look || !ctx) return;
+    const t = video.currentTime;
+    const lag = timestampLag();
+    const pad = settings.cover;
+    for (const m of PFFilter.findMatches(look.words.between(t - 3, t + 1), compiled)) {
+      const m0 = m.start - lag.start - pad;
+      const m1 = m.end - lag.end + pad;
+      if (m0 <= t && t < m1) {
+        look.scheduled.add(Math.round(m.start * 100) + ':' + m.text);
+        addInterval(ctx.currentTime, ctx.currentTime + (m1 - t) / (video.playbackRate || 1) + 0.05, m);
+      }
+    }
+  }
+
+  // Pause (like buffering) until the transcript is LOOKAHEAD_MIN ahead.
+  function holdForTranscript(video) {
+    if (holding) return;
+    const started = performance.now();
+    holding = { video };
+    internalPause(video);
+    updateBadges();
+    const check = () => {
+      if (!holding || holding.video !== video) return; // cancelled (user paused / navigated)
+      const look = lookFor(video);
+      const ok = look && transcriptAhead(look, video) >= LOOKAHEAD_MIN;
+      if (ok || performance.now() - started > HOLD_MAX_MS) {
+        holding = null;
+        if (ok) enterLookahead(video);
+        else enterDelayMode();
+        internalPlay(video);
+        updateBadges();
+      } else setTimeout(check, 100);
+    };
+    check();
+  }
+
+  // Turn upcoming swears in the transcript into mutes, timed by ClockSync.
+  function scheduleLookaheadMutes(video, look) {
+    const t = video.currentTime;
+    const lag = timestampLag();
+    const pad = settings.cover;
+    for (const m of PFFilter.findMatches(look.words.between(t - 2, t + SCHEDULE_AHEAD), compiled)) {
+      const key = Math.round(m.start * 100) + ':' + m.text;
+      if (look.scheduled.has(key)) continue;
+      const m0 = m.start - lag.start - pad;
+      const m1 = m.end - lag.end + pad;
+      if (m1 < t) continue;
+      const c0 = look.sync.heardAt(m0);
+      const c1 = look.sync.heardAt(m1);
+      if (c0 == null || c1 == null) continue; // no clock fit yet
+      look.scheduled.add(key);
+      if (SILENT_TEST) testLog.mutes.push({ text: m.text, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
+      addInterval(c0 + currentDelay, c1 + currentDelay, m);
+    }
+  }
+
+  setInterval(() => {
+    if (!ctx || !settings.enabled) return;
+    const v = activeVideo();
+    for (const look of looks.values()) {
+      const mine = v && look.src === v.src && settings.lookahead && port && state.engine === 'ready';
+      if (mine) look.transcriber.start();
+      else look.transcriber.stop();
+      const lv = videoForSrc(look.src);
+      if (lv) look.timeline.evict(lv.currentTime);
+    }
+    const look = lookFor(v);
+    if (!v || !look) return;
+    look.sync.notePlayhead(ctx.currentTime, v.currentTime, { paused: v.paused || v.seeking, rate: v.playbackRate });
+    if (v.paused || holding) return;
+
+    if (mode === 'lookahead') {
+      if (transcriptAhead(look, v) < LOOKAHEAD_GUARD) {
+        holdForTranscript(v);
+        return;
+      }
+      scheduleLookaheadMutes(v, look);
+      if (ctx.currentTime - lastCalibration > 2) {
+        lastCalibration = ctx.currentTime;
+        look.sync.calibrate(ctx.currentTime);
+      }
+    } else if (settings.lookahead && port && state.engine === 'ready' && performance.now() - lastUpgradeTry > 5000) {
+      // Started in delay mode (e.g. the model was still loading): switch once,
+      // by seeking the real playhead back to the picture on screen so nothing
+      // is skipped; the seek then holds until the transcript is ready.
+      lastUpgradeTry = performance.now();
+      const d = delayerFor(v);
+      if (d && d.seekTo && look.timeline.readyAhead(v.currentTime) > 5) d.seekTo(d.onScreenTime());
+    }
+  }, 100);
+
+  // Diagnostics for automated tests (#cleanears-silent-test only).
+  const testLog = { mutes: [] };
+  if (SILENT_TEST) {
+    setInterval(() => {
+      const v = activeVideo();
+      const look = lookFor(v);
+      document.documentElement.dataset.cleanEars = JSON.stringify({
+        silent: ctx ? ctx.sinkId && ctx.sinkId.type : 'no audio context yet',
+        engine: state.engine,
+        device: state.device,
+        mode,
+        holding: !!holding,
+        delay: currentDelay,
+        playhead: v ? +v.currentTime.toFixed(2) : null,
+        paused: v ? v.paused : null,
+        transcriptAhead: v && look ? +Math.min(999, transcriptAhead(look, v)).toFixed(2) : null,
+        decodedAhead: v && look ? +look.timeline.readyAhead(v.currentTime, 120).toFixed(2) : null,
+        windows: look ? look.transcriber.stats.windows : 0,
+        whisperMs: Math.round(state.processingMs || 0),
+        calibration: look ? look.sync.lastCalibration : null,
+        caught: state.caught,
+        missed: state.missed,
+        recent: state.recent.slice(0, 10),
+        mutes: testLog.mutes.slice(-40),
+        words: look ? look.words.words.length : 0,
+        lastWords: look && v ? look.words.between(v.currentTime, v.currentTime + 8).map((w) => w.text).join('') : '',
+      });
+    }, 500);
+  }
+
   // ───────────────────────── status badge ─────────────────────────
 
   const badges = new WeakMap();
@@ -1078,6 +1413,8 @@
       case 'disconnected':
         return { text: 'Clean Ears: reconnecting…', warn: true };
     }
+    if (holding) return { text: 'Clean Ears: reading ahead…' };
+    if (mode === 'lookahead') return { text: `Clean Ears on · no delay · ${state.caught} filtered` };
     if (ctx && ctx.currentTime < flushUntil && anyPlaying()) {
       return { text: `Clean Ears: checking ahead (${currentDelay.toFixed(1)} s)…` };
     }
@@ -1127,6 +1464,7 @@
       enabled: settings.enabled,
       delay: currentDelay,
       autoDelay: settings.autoDelay,
+      mode,
       measuredNeed: measuredNeed(),
       wordsMeasured: needs.length,
     });

@@ -65,3 +65,15 @@ fixture once, serve the repo root, open `transcribe-test.html`, click
 ```bash
 tests/lookahead/make-ten-minute-fixture.sh
 ```
+
+## Step 1.5 (extension integration)
+
+`tests/extension/harness.html#cleanears-silent-test` loads the real page
+bridge and content script next to a YouTube-like player, with chrome.* APIs
+stubbed and the port wired to the real Whisper worker. Serve the repo root,
+open it, click **Start**, then `H.video.play()` and read `H.diag()`.
+
+On real YouTube with the installed extension, open any video with
+`#cleanears-silent-test` in the URL: the extension's audio then has no output
+device for that tab, and its status is published on
+`document.documentElement.dataset.cleanEars`.

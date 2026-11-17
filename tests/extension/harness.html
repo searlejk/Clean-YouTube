@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Extension harness</title>
+<!-- Loads the real extension scripts (page bridge + content script) next to a
+     YouTube-like MediaSource player. chrome.* APIs are stubbed: the port goes
+     straight to the real Whisper worker, routed like offscreen.js does.
+     Open with #cleanears-silent-test: the extension's audio has no output device. -->
+<style>
+  #movie_player { position: relative; width: 640px; height: 120px; background: #000; }
+  .html5-video-container { position: relative; }
+  video { position: absolute; left: 0; top: 0; width: 640px; height: 120px; }
+</style>
+<link rel="stylesheet" href="../../content.css" />
+<button id="start">Start</button>
+<div id="movie_player" class="html5-video-player"><div class="html5-video-container"><video class="html5-main-video" playsinline></video></div></div>
+<pre id="log"></pre>
+<!-- "MAIN world" scripts -->
+<script src="../../lookahead/webm-opus-demuxer.js"></script>
+<script src="../../lookahead/opus-pcm-decoder.js"></script>
+<script src="../../lookahead/mse-tap.js"></script>
+<script src="../../lookahead/main-bridge.js"></script>
+<!-- chrome.* stub, then the content script's files in manifest order -->
+<script src="chrome-stub.js"></script>
+<script src="../../settings.js"></script>
+<script src="../../filter.js"></script>
+<script src="../../lookahead/pcm-timeline.js"></script>
+<script src="../../lookahead/word-timeline.js"></script>
+<script src="../../lookahead/lookahead-transcriber.js"></script>
+<script src="../../lookahead/clock-sync.js"></script>
+<script src="../../content.js"></script>
+<script src="harness.js"></script>
