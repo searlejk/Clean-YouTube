@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Step 1.4 transcribe-ahead test</title>
+<p>
+  Generate the fixture once with <code>tests/lookahead/make-ten-minute-fixture.sh</code>.
+  Click <b>Start</b> (loads Whisper Tiny), then <code>R.run()</code> in the console and
+  <code>R.summary()</code> when done. Add <code>?rate=2</code> to play at double speed.
+  The player is muted.
+</p>
+<button id="start">Start</button>
+<audio></audio>
+<pre id="log"></pre>
+<script src="../../lookahead/webm-opus-demuxer.js"></script>
+<script src="../../lookahead/opus-pcm-decoder.js"></script>
+<script src="../../lookahead/pcm-timeline.js"></script>
+<script src="../../lookahead/mse-tap.js"></script>
+<script src="../../lookahead/word-timeline.js"></script>
+<script src="../../lookahead/lookahead-transcriber.js"></script>
+<script src="transcribe-test.js"></script>

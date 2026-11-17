@@ -47,3 +47,21 @@ await T.segment(76, 12, 'seek forward');
 
 Each segment reports, per word, how far the predicted "heard at" time was from
 when it was actually heard. Expected: 0–1 ms for every word.
+
+## Step 1.4
+
+**Scheduler (Node):** no lost or duplicated words across window seams and a
+seek; transcript ≥ 5 s ahead in a simulated 2-minute playback.
+
+```bash
+node tests/lookahead/test-lookahead-transcriber.js
+```
+
+**Transcribe ahead (browser, real Whisper Tiny):** generate the 10-minute
+fixture once, serve the repo root, open `transcribe-test.html`, click
+**Start**, then run `R.run()` in the console and `R.summary()` after it ends
+(10 minutes; add `?rate=2` for double speed). The player is muted.
+
+```bash
+tests/lookahead/make-ten-minute-fixture.sh
+```

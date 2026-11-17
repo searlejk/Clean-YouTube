@@ -138,11 +138,36 @@ feel real-time" below for the options and why lookahead capture was chosen.
       samples while packets are continuous, and fully resets on seek.
       Still to confirm on real YouTube once the extension uses this (1.5): the
       offset measured there in 1.2 was ~19 ms, which self-calibration absorbs.
-- [ ] **1.4 Transcribe ahead of the playhead.** Queue decoded audio by media
+- [x] **1.4 Transcribe ahead of the playhead.** Queue decoded audio by media
       time; Whisper works through it nearest-first; results are stored as a
       per-video timeline of words.
       *Done when:* the transcript stays ≥ 5 s ahead of playback for a 10-minute
       video on Tiny.
+      **Result (2026-11-17):** [`lookahead/lookahead-transcriber.js`](lookahead/lookahead-transcriber.js)
+      (always transcribes the first untranscribed stretch at/after the
+      playhead, 10 s windows with 1 s of context each side, skips silence,
+      reuses earlier work after seeks) and [`lookahead/word-timeline.js`](lookahead/word-timeline.js)
+      (words + transcribed stretches by media time); the Whisper worker gained
+      an exact-range `transcribe` request.
+      Test: [`tests/lookahead/transcribe-test.html`](tests/lookahead/transcribe-test.html),
+      10:00 of speech through the YouTube-like player at normal speed, real
+      Whisper Tiny on WebGPU:
+
+      | Measure | Result |
+      |---|---|
+      | Lowest lead before the last 10 s | **9.0 s** (never below 5 s) |
+      | Median lead | 15.5 s |
+      | Whisper time per 12 s window | 0.89 s (~13× faster than real time) |
+      | Transcript reached | the end of the video (600.02 s) |
+      | Words transcribed / real words from the script | 1,797 / 98.9% |
+      | Decoder | 30,001 packets, 0 errors, 0 gaps |
+
+      The lead is capped by how far ahead the player buffers (20 s in this
+      test; YouTube buffered 34–80 s in 1.1–1.2). Node test
+      [`test-lookahead-transcriber.js`](tests/lookahead/test-lookahead-transcriber.js)
+      also checks that no word is lost or duplicated at window seams or after
+      a seek. That bug was found and fixed here: a word right on a seam could
+      be timed just outside both windows.
 - [ ] **1.5 Zero-delay playback when ahead.** If the timeline already covers
       the next few seconds, play with no delay and schedule mutes against
       `currentTime`. Fall back to the existing delay line only when it doesn't

@@ -213,11 +213,14 @@ async function processSession(id, t) {
   const processingMs = performance.now() - t0;
   if (!sessions.has(id)) return;
 
-  // Whisper pads input to 30 s, so the last word's end can drift far past the
-  // real audio. Clamp to the window and to a sane single-word length.
-  const base = winStart / SR;
-  const len = audio.length / SR;
-  const words = (out.chunks || [])
+  const words = wordsFrom(out, winStart / SR, audio.length / SR);
+  postMessage({ type: 'words', session: id, words, windowEnd: end / SR, processingMs, text: out.text });
+}
+
+// Whisper pads input to 30 s, so the last word's end can drift far past the
+// real audio. Clamp to the window and to a sane single-word length.
+function wordsFrom(out, base, len) {
+  return (out.chunks || [])
     .filter((c) => c.timestamp && c.timestamp[0] != null && c.timestamp[0] < len)
     .map((c) => {
       const start = c.timestamp[0];
@@ -226,7 +229,18 @@ async function processSession(id, t) {
       if (end <= start) end = start + 0.2;
       return { text: c.text, start: base + start, end: base + end };
     });
-  postMessage({ type: 'words', session: id, words, windowEnd: end / SR, processingMs, text: out.text });
+}
+
+// Lookahead mode (roadmap step 1.4): transcribe an exact stretch of decoded
+// audio and reply with its words. Requests are served before streaming
+// sessions, in the order they arrive.
+const jobs = [];
+
+async function processJob(job, t) {
+  const t0 = performance.now();
+  const out = await t(job.samples, { return_timestamps: 'word' });
+  const words = wordsFrom(out, job.offset, job.samples.length / SR);
+  postMessage({ type: 'transcribed', id: job.id, words, text: out.text, processingMs: performance.now() - t0 });
 }
 
 function kick() {
@@ -235,8 +249,9 @@ function kick() {
   (async () => {
     try {
       let id;
-      while (transcriber && !loading && (id = pickSession()) != null) {
-        currentPass = processSession(id, transcriber);
+      while (transcriber && !loading && (jobs.length || (id = pickSession()) != null)) {
+        const job = jobs.length ? jobs.shift() : null;
+        currentPass = job ? processJob(job, transcriber) : processSession(id, transcriber);
         try {
           await currentPass;
           if (failures) {
@@ -244,6 +259,7 @@ function kick() {
             status('ready');
           }
         } catch (err) {
+          if (job) postMessage({ type: 'transcribed', id: job.id, error: String(err?.message || err) });
           await recover(err);
         }
       }
@@ -307,6 +323,11 @@ onmessage = ({ data }) => {
     }
     case 'close':
       sessions.delete(data.session);
+      break;
+    case 'transcribe':
+      // { id, samples: Float32Array (16 kHz), offset: media time of samples[0] }
+      jobs.push({ id: data.id, samples: data.samples, offset: data.offset || 0 });
+      kick();
       break;
   }
 };
