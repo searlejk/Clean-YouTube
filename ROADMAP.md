@@ -103,15 +103,41 @@ feel real-time" below for the options and why lookahead capture was chosen.
         shifting timestamps, so block timestamps are used as-is.
       - An AudioWorklet loaded from a `blob:` URL is blocked by YouTube's CSP
         (the extension loads its worklet from `chrome-extension://` instead).
-- [ ] **1.3 Media-time mapping.** Map each decoded sample to video time
+- [x] **1.3 Media-time mapping.** Map each decoded sample to video time
       (`timestampOffset`, segment timestamps), across seeks and quality switches.
-      *Done when:* a word's transcribed time lands within 50 ms of where it
-      plays, after 3 seeks.
-      Plan from 1.2: the extension already captures the player's audio for
-      muting, so it can **self-calibrate**: periodically cross-correlate the
-      decoded lookahead audio with the live captured audio (the envelope method
-      from 1.2) to measure the real offset on each computer, instead of
-      trusting a fixed number.
+      *Done when:* for words at known positions (measured from the waveform),
+      the predicted moment each is heard lands within 50 ms of when it's
+      actually heard, after 3 seeks. (Whisper's own timestamp error is step 5.)
+      **Result (2026-11-17):** new modules
+      [`lookahead/mse-tap.js`](lookahead/mse-tap.js) (hooks a page's player
+      buffers → parser → decoder → timeline),
+      [`lookahead/pcm-timeline.js`](lookahead/pcm-timeline.js) (decoded audio by
+      media time, "how far ahead is ready", eviction) and
+      [`lookahead/clock-sync.js`](lookahead/clock-sync.js) (media clock ↔ Web
+      Audio clock, self-calibrating the player's fixed offset by matching
+      loudness envelopes of decoded vs. captured audio).
+      Test: [`tests/lookahead/mapping-test.html`](tests/lookahead/mapping-test.html),
+      a MediaSource player that feeds a 92 s speech track the way YouTube does
+      (random 8–40 KB slices ~20 s ahead; abort + restart at a cluster on seek),
+      captured into a silent Web Audio graph.
+
+      | Segment | Words | Prediction error | Calibration match |
+      |---|---|---|---|
+      | Start at 0 s | 5 | 0 ms each | r 0.994 |
+      | Seek forward to 45 s (past the buffer) | 7 | 0 ms each | r 0.997 |
+      | Seek back to 20 s (inside the buffer) | 5 | 0 ms each | r 0.990 |
+      | Seek forward to 76 s | 5 | 0 ms each | r 0.988 |
+
+      (Errors are at the test's 1 ms resolution; 6,261 packets, 0 decoder
+      errors, 0 gaps.)
+      **Bug found and fixed:** Chrome's `AudioDecoder` ignores jumps in input
+      timestamps and keeps counting from where it was, so after a seek from
+      35.8 s to 45 s every decoded sample was stamped 9.1 s early. The decoder
+      now matches each output to its own packet (container timestamp − Opus
+      pre-skip + any trimmed start, from the packet's TOC header), counts
+      samples while packets are continuous, and fully resets on seek.
+      Still to confirm on real YouTube once the extension uses this (1.5): the
+      offset measured there in 1.2 was ~19 ms, which self-calibration absorbs.
 - [ ] **1.4 Transcribe ahead of the playhead.** Queue decoded audio by media
       time; Whisper works through it nearest-first; results are stored as a
       per-video timeline of words.
@@ -192,24 +218,40 @@ this role. `yt-dlp` only comes into play if we add a local companion app
 - [ ] 7.3 Per-word confidence shown in the popup's "recently caught" list
 - [ ] 7.4 Allow-list for false positives (e.g. "Dick Van Dyke")
 
-## 8. Diarization (pyannote)
+## 8. Diarization (who's speaking)
 
-- [ ] 8.1 Speaker label per word (pyannote via companion, or an ONNX speaker
-      embedding + clustering in the browser)
-- [ ] 8.2 Stable speaker IDs across a whole video
+Needed so that in a podcast or interview, a swear by speaker B is replaced in
+**B's** voice, never in speaker A's.
 
-## 9. Voice sample (10–30 s clip)
+- [ ] 8.1 Label each word with a speaker (speaker embeddings + clustering,
+      e.g. pyannote via the companion app, or a small ONNX embedding model in
+      the browser).
+      *Done when:* on a 2-person interview, ≥ 95% of words get the right speaker.
+- [ ] 8.2 Stable identities: the same person keeps the same label for the
+      whole video, including after pauses, seeks, and when someone returns
+      after a long gap.
 
-- [ ] 9.1 Automatically collect clean, swear-free speech per speaker from the
-      vocal stem
+## 9. Voice sample (10–30 s clip per speaker)
+
+- [ ] 9.1 Automatically collect 10–30 s of clean, swear-free speech for each
+      speaker from the vocal stem
 - [ ] 9.2 Quality checks: no overlap, no music bleed, enough length
 
-## 10. Voice clone (F5-TTS / XTTS)
+## 10. Voice clone (small model, one voice profile per speaker)
 
-- [ ] 10.1 Generate placeholder words ("shoot", "fudge", …) once per speaker
+- [ ] 10.1 Pick a **small** voice-cloning model that runs on a normal laptop
+      without overwhelming it. Candidates: F5-TTS small, XTTS-v2, OpenVoice,
+      or any TTS + an RVC voice converter; prefer ONNX/WebGPU-capable ones.
+      Write down download size, memory use, and speed on this Mac.
+      *Done when:* one placeholder word in a sampled voice generates in
+      under 1 s, using under ~1 GB of memory.
+- [ ] 10.2 One shared model, one profile per speaker: each speaker gets their
+      own voice sample/embedding, not a separate full model. Cap at a few
+      voices (e.g. 4) to protect the user's computer.
+- [ ] 10.3 Generate placeholder words ("shoot", "fudge", …) once per speaker
       and cache them
-- [ ] 10.2 Measure generation time; this has to finish within the lookahead
-- [ ] 10.3 Personal viewing only; no export or sharing of cloned audio
+- [ ] 10.4 Measure generation time; this has to finish within the lookahead
+- [ ] 10.5 Personal viewing only; no export or sharing of cloned audio
 
 ## 11. Fit to gap (time-stretch)
 
@@ -221,8 +263,14 @@ this role. `yt-dlp` only comes into play if we add a local companion app
 
 - [x] 12.1 Mute / bleep the full mix with fades (current version)
 - [ ] 12.2 Mute only the vocal stem so music keeps playing
-- [ ] 12.3 Swap in the replacement word with crossfades
-- [ ] 12.4 Mode setting: silence / bleep / replacement word
+- [ ] 12.3 Swap in the replacement word with crossfades, using the cached
+      word **of the speaker who said the swear** (step 8's label)
+- [ ] 12.4 When unsure, don't guess: if the speaker is uncertain, voices
+      overlap, or a new speaker has no profile yet, fall back to silence or a
+      bleep rather than risk the wrong voice.
+      *Done when:* on 3 multi-speaker test videos, no swear is replaced in the
+      wrong person's voice.
+- [ ] 12.5 Mode setting: silence / bleep / replacement word
 
 ## 13. Player (delayed video + clean audio)
 
