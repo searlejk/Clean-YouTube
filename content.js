@@ -1114,7 +1114,35 @@
   let holding = null; // { video } while playback is held for the transcript
   let lastCalibration = 0;
   let lastUpgradeTry = 0;
-  const looks = new Map(); // player blob: URL -> { timeline, words, sync, transcriber, scheduled }
+  const looks = new Map(); // player blob: URL -> { timeline, words, sync, transcriber, scheduled, key }
+
+  // Saved transcripts (step 1.6): rewatching starts with no delay, even
+  // before Whisper has loaded.
+  const SAVE_EVERY_MS = 15000;
+  const transcriptCache = new TranscriptCache();
+  transcriptCache.init();
+
+  // "<videoId>:<model>" for the main YouTube player's video; null for ads,
+  // previews and anything that isn't a watch page or Short.
+  function videoKey(video) {
+    if (!video || !video.matches('#movie_player video, .html5-main-video, #shorts-player video, ytd-reel-video-renderer video')) return null;
+    if (video.closest('.ad-showing')) return null;
+    const m = location.pathname.match(/^\/shorts\/([\w-]{6,})/);
+    const id = m ? m[1] : new URLSearchParams(location.search).get('v');
+    return id ? `${id}:${settings.model}` : null;
+  }
+
+  function saveTranscript(look) {
+    if (!look.key || look.words.version === look.savedVersion) return;
+    look.savedVersion = look.words.version;
+    transcriptCache.save(look.key, look.words).catch(() => {});
+  }
+
+  function saveAllTranscripts() {
+    for (const look of looks.values()) saveTranscript(look);
+  }
+  window.addEventListener('pagehide', saveAllTranscripts);
+  document.addEventListener('visibilitychange', () => document.hidden && saveAllTranscripts());
   const transcribeJobs = new Map();
   let nextTranscribeId = 1;
 
@@ -1173,7 +1201,7 @@
     const timeline = new PcmTimeline({ keepBehind: 30, keepAhead: 600 });
     const words = new WordTimeline();
     const sync = new ClockSync({ timeline });
-    const look = { src, timeline, words, sync, scheduled: new Set() };
+    const look = { src, timeline, words, sync, scheduled: new Set(), key: null, savedVersion: 0, lastSave: 0, cacheLoaded: false };
     look.transcriber = new LookaheadTranscriber({
       timeline,
       words,
@@ -1188,6 +1216,7 @@
     for (const [k, l] of looks) {
       if (k !== src && !videoForSrc(k)) {
         l.transcriber.stop();
+        saveTranscript(l);
         looks.delete(k);
       }
     }
@@ -1210,7 +1239,14 @@
     }
   }
 
+  const modeLog = []; // test diagnostics: when each mode began, by video time
+  function noteMode(m, video) {
+    modeLog.push({ mode: m, at: video ? +video.currentTime.toFixed(2) : null, wall: Math.round(performance.now()) });
+    if (modeLog.length > 50) modeLog.shift();
+  }
+
   function enterLookahead(video) {
+    if (mode !== 'lookahead') noteMode('lookahead', video || activeVideo());
     mode = 'lookahead';
     setDelay(0);
     if (video) muteIfResumingInsideSwear(video);
@@ -1226,6 +1262,7 @@
 
   function enterDelayMode() {
     const wasLookahead = mode === 'lookahead';
+    if (wasLookahead) noteMode('delay', activeVideo());
     mode = 'delay';
     setDelay(targetDelay());
     for (const x of delayers) x.setActive(settings.enabled);
@@ -1250,7 +1287,11 @@
   // Decide how to play from here (on play and after seeks).
   function chooseMode(video, d) {
     const look = lookFor(video);
-    const available = settings.lookahead && look && port && state.engine === 'ready';
+    const engineReady = !!port && state.engine === 'ready';
+    const cached = transcriptCache.has(videoKey(video));
+    // With a saved transcript there's no need to wait for Whisper; the hold
+    // below just gives the page bridge a moment to start and the cache to load.
+    const available = settings.lookahead && (cached || (look && engineReady));
     if (!available) {
       if (mode === 'lookahead') enterDelayMode();
       else {
@@ -1259,7 +1300,7 @@
       }
       return;
     }
-    if (transcriptAhead(look, video) >= LOOKAHEAD_MIN) enterLookahead(video);
+    if (look && transcriptAhead(look, video) >= LOOKAHEAD_MIN) enterLookahead(video);
     else holdForTranscript(video);
   }
 
@@ -1335,6 +1376,20 @@
     }
     const look = lookFor(v);
     if (!v || !look) return;
+    if (!look.key) {
+      look.key = videoKey(v);
+      if (look.key && transcriptCache.has(look.key)) {
+        transcriptCache.load(look.key, look.words).then((ok) => {
+          look.cacheLoaded = ok;
+          look.savedVersion = look.words.version; // nothing new to save yet
+          updateBadges();
+        });
+      }
+    }
+    if (look.key && performance.now() - look.lastSave > SAVE_EVERY_MS) {
+      look.lastSave = performance.now();
+      saveTranscript(look);
+    }
     look.sync.notePlayhead(ctx.currentTime, v.currentTime, { paused: v.paused || v.seeking, rate: v.playbackRate });
     if (v.paused || holding) return;
 
@@ -1383,6 +1438,10 @@
         recent: state.recent.slice(0, 10),
         mutes: testLog.mutes.slice(-40),
         words: look ? look.words.words.length : 0,
+        cacheKey: look ? look.key : videoKey(v),
+        cachedOnDisk: transcriptCache.has(look ? look.key : videoKey(v)),
+        cacheLoaded: look ? look.cacheLoaded : false,
+        modeLog: modeLog.slice(-12),
         lastWords: look && v ? look.words.between(v.currentTime, v.currentTime + 8).map((w) => w.text).join('') : '',
       });
     }, 500);

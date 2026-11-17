@@ -203,9 +203,24 @@ feel real-time" below for the options and why lookahead capture was chosen.
       the first hold allows 4 s because the first Whisper pass after loading
       is slow.
       Not yet tested: live streams and DRM videos (1.7), ads mid-video.
-- [ ] **1.6 Transcript cache per video.** Save the word timeline by video ID
+- [x] **1.6 Transcript cache per video.** Save the word timeline by video ID
       (IndexedDB) so rewatching and seeking back are instant.
       *Done when:* a second viewing starts with 0 s delay from the first frame.
+      **Result (2026-11-17, extension v1.2.0):** [`lookahead/transcript-cache.js`](lookahead/transcript-cache.js)
+      saves each video's words and transcribed stretches in the extension's
+      own storage (`chrome.storage.local`, not the page's IndexedDB, so
+      YouTube can't read or clear it), keyed `videoId:model`, about 25 bytes
+      per word, capped at 8 MB (~35 h of video) with least-recently-watched
+      eviction. Saved every 15 s and when leaving the page; never during ads.
+      A video with a saved transcript plays with no delay as soon as the cache
+      loads, without waiting for Whisper; Whisper only fills untranscribed
+      gaps.
+
+      | Test | Result |
+      |---|---|
+      | Node: save/load, partial coverage, no clobbering, LRU eviction | pass |
+      | Harness, fresh page, second viewing | no delay from media time 0 while Whisper was still loading; 41.6 s ahead at once; mutes ~4.9 s early, 0 late |
+      | **Real YouTube in Chrome**, full reload at 11:30 | no delay from the first frame (0.5 s before it while the cache loaded); **99.5 s ahead immediately** vs ~4 s on first viewing; swear muted 4.9 s early |
 - [ ] **1.7 Fallbacks and edge cases.** Live streams, ads, Shorts, DRM videos,
       playback-speed changes, background tabs.
       *Done when:* each case either works with lookahead or falls back cleanly

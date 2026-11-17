@@ -77,3 +77,18 @@ On real YouTube with the installed extension, open any video with
 `#cleanears-silent-test` in the URL: the extension's audio then has no output
 device for that tab, and its status is published on
 `document.documentElement.dataset.cleanEars`.
+
+## Step 1.6
+
+**Transcript cache (Node):** save/load round trip, partial coverage, current
+session not overwritten, least-recently-watched eviction.
+
+```bash
+node tests/lookahead/test-transcript-cache.js
+```
+
+**Second viewing (browser):** the extension harness keeps its stand-in
+storage in `localStorage`, so play `harness.html?v=somevideo#cleanears-silent-test`
+for a while, then load it again with an extra query parameter (a change after
+`#` alone doesn't reload the page) and play: `H.diag().modeLog` should start
+with `lookahead` at 0.

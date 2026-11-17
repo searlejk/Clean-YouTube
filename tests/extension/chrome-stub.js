@@ -45,7 +45,23 @@
   window.chrome = {
     storage: {
       sync: { get: async (d) => ({ ...d }) },
-      local: { get: async () => ({}), set: async () => {} },
+      // Backed by localStorage so a reload of the harness acts as a later visit.
+      local: {
+        async get(keys) {
+          const out = {};
+          for (const k of [keys].flat()) {
+            const v = localStorage.getItem('harness:' + k);
+            if (v !== null) out[k] = JSON.parse(v);
+          }
+          return out;
+        },
+        async set(obj) {
+          for (const [k, v] of Object.entries(obj)) localStorage.setItem('harness:' + k, JSON.stringify(v));
+        },
+        async remove(keys) {
+          for (const k of [keys].flat()) localStorage.removeItem('harness:' + k);
+        },
+      },
       onChanged: { addListener() {} },
     },
     runtime: {

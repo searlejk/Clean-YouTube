@@ -46,3 +46,7 @@
 {"ts": "2026-11-17T20:54:34+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "transcript"}
 {"ts": "2026-11-17T22:41:12+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
 {"ts": "2026-11-17T22:41:24+00:00", "event": "answer", "gap_end": "2026-11-17T22:41:12+00:00", "minutes": 0.0}
+{"ts": "2026-11-17T22:45:55+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-17T22:55:02+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-17T22:55:17+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-17T22:55:36+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}

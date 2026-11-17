@@ -16,6 +16,7 @@
     constructor() {
       this.words = []; // sorted by start
       this.covered = []; // sorted, disjoint [from, to]
+      this.version = 0; // bumped on every change (used to know when to save)
     }
 
     // Record the result of transcribing [from, to): its words replace any
@@ -36,6 +37,7 @@
       kept.sort((a, b) => a.start - b.start);
       this.words = kept;
       this.cover(from, to);
+      this.version++;
     }
 
     cover(from, to) {
