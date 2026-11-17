@@ -32,7 +32,9 @@ AUTO_GAP_MINUTES = 10
 
 
 def now():
-    return datetime.now(timezone.utc)
+    # TIMELOG_NOW lets tests replay a hook at a past moment.
+    fixed = os.environ.get('TIMELOG_NOW')
+    return parse(fixed) if fixed else datetime.now(timezone.utc)
 
 
 def parse(ts):
@@ -114,9 +116,50 @@ def fmt(minutes):
     return f'{h} h {m:02d} min' if h else f'{m} min'
 
 
+def is_typed_message(d):
+    content = d.get('message', {}).get('content')
+    return d.get('type') == 'user' and not d.get('isMeta') and (
+        isinstance(content, str) or (isinstance(content, list) and content and content[0].get('type') in ('text', 'image'))
+    )
+
+
+def last_activity(transcript_path, after, before):
+    """Claude's last recorded action after `after`, ignoring the new message that
+    triggered this hook (if the transcript already holds it) and anything after."""
+    entries = []
+    try:
+        with open(transcript_path) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                ts = d.get('timestamp')
+                if ts and d.get('type') in ('assistant', 'user', 'system'):
+                    t = parse(ts)
+                    if after < t <= before:
+                        entries.append((t, is_typed_message(d)))
+    except OSError:
+        return None
+    entries.sort()
+    # The newest typed message within a minute of now is the one being sent.
+    if entries and entries[-1][1] and (before - entries[-1][0]).total_seconds() < 60:
+        cutoff = entries[-1][0]
+        entries = [e for e in entries if e[0] < cutoff]
+    return max((t for t, _ in entries), default=None)
+
+
 def cmd_prompt(_args):
     data = read_hook_input()
     t = now()
+    # A turn that was interrupted (you sent a new message while Claude was
+    # working) never fires the Stop hook. Close it at Claude's last action so
+    # it isn't counted as running until this message.
+    marks = sorted((e['ts'], e['event']) for e in load() if e['event'] in ('prompt', 'stop'))
+    if marks and marks[-1][1] == 'prompt' and data.get('transcript_path'):
+        end = last_activity(data['transcript_path'], parse(marks[-1][0]), t)
+        if end:
+            append({'ts': iso(end), 'event': 'stop', 'session': data.get('session_id'), 'source': 'transcript'})
     append({'ts': iso(t), 'event': 'prompt', 'session': data.get('session_id'), 'source': 'hook'})
     _, gaps = timeline(load(), at=t)
     gap = gaps[-1] if gaps and gaps[-1]['end'] == parse(iso(t)) else None

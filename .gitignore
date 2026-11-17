@@ -5,3 +5,6 @@ Clean-Ears-Extension/
 .DS_Store
 .claude/
 *.zip
+
+# Generated test reference (see tests/lookahead/README.md)
+*.f32

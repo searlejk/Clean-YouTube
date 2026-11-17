@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Step 1.2 decode test</title>
+<p>Running… result appears below and in <code>window.result</code>.</p>
+<pre id="out"></pre>
+<script src="../../lookahead/webm-opus-demuxer.js"></script>
+<script src="../../lookahead/opus-pcm-decoder.js"></script>
+<script src="decode-test.js"></script>
+<script>
+  (async () => {
+    while (!window.result) await new Promise((r) => setTimeout(r, 200));
+    document.getElementById('out').textContent = JSON.stringify(window.result, null, 2);
+  })();
+</script>

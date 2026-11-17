@@ -76,15 +76,42 @@ feel real-time" below for the options and why lookahead capture was chosen.
         matters for 1.7.
       - Lookahead after a seek is near-instant, so the delay-line fallback
         should only be needed for a second or so.
-- [ ] **1.2 Decode captured segments to PCM.** WebM/Opus and fMP4/AAC → 16 kHz
+- [x] **1.2 Decode captured segments to PCM.** WebM/Opus and fMP4/AAC → 16 kHz
       mono (WebCodecs `AudioDecoder` plus a small demuxer, or `decodeAudioData`
       on init + media segments).
       *Done when:* decoded audio for a known 10 s span matches the audio heard
       through the player (cross-correlation offset < 20 ms).
+      **Result (2026-11-17):** [`lookahead/webm-opus-demuxer.js`](lookahead/webm-opus-demuxer.js)
+      (streaming WebM parser) + [`lookahead/opus-pcm-decoder.js`](lookahead/opus-pcm-decoder.js)
+      (WebCodecs Opus → 16 kHz mono, 63-tap low-pass), tests in [`tests/lookahead/`](tests/lookahead/).
+
+      | Check | Result |
+      |---|---|
+      | Parser vs ffmpeg, 881 packets, slices from 1 byte to whole file | every packet byte-identical, same timestamps |
+      | Parser after a simulated seek (reset + jump mid-cluster) | resyncs on the next cluster, all later packets correct |
+      | Decoder vs ffmpeg decode | **0.0 ms offset**, correlation 0.99, no gaps |
+      | Live YouTube (MIT lecture): 6,000 packets decoded ahead | 0 errors, 0 gaps, 0 resyncs; ~80–100 s ahead of the playhead |
+      | Live YouTube: decoded audio vs the player's actual output | loudness envelopes match (r 0.87–1.00 per second, 0.94 overall) at **19 ms** offset |
+
+      Notes:
+      - The live offset was measured by capturing the player's output into a
+        silent Web Audio graph. On a throttled page that capture loses ~0.7% of
+        samples, which makes the instrument itself drift ~±10 ms over 6 s, so
+        treat "19 ms" as "within about 10–30 ms". Precise alignment is 1.3.
+      - YouTube's Opus streams: stereo, 48 kHz, `timestampOffset` 0, no
+        CodecDelay element. Chrome's Opus decoder drops the pre-skip without
+        shifting timestamps, so block timestamps are used as-is.
+      - An AudioWorklet loaded from a `blob:` URL is blocked by YouTube's CSP
+        (the extension loads its worklet from `chrome-extension://` instead).
 - [ ] **1.3 Media-time mapping.** Map each decoded sample to video time
       (`timestampOffset`, segment timestamps), across seeks and quality switches.
       *Done when:* a word's transcribed time lands within 50 ms of where it
       plays, after 3 seeks.
+      Plan from 1.2: the extension already captures the player's audio for
+      muting, so it can **self-calibrate**: periodically cross-correlate the
+      decoded lookahead audio with the live captured audio (the envelope method
+      from 1.2) to measure the real offset on each computer, instead of
+      trusting a fixed number.
 - [ ] **1.4 Transcribe ahead of the playhead.** Queue decoded audio by media
       time; Whisper works through it nearest-first; results are stored as a
       per-video timeline of words.
