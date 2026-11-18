@@ -9,4 +9,6 @@
 | 11/17/2026 | Reviewed what the extension can do so far; roadmap step 1.6: saved transcripts per video so rewatching plays with no delay from the first frame (tested on real YouTube in Chrome: 99.5 s ahead immediately) | 0.8 |
 | 11/17/2026 | Roadmap step 1.7 (start): fallbacks for live streams, protected videos and speed changes; status label says which mode is on and why | 0.5 |
 | 11/18/2026 | Roadmap step 1.7: tested live streams, Shorts, speed changes and background tabs on real YouTube in Chrome; fixed the live-stream check, the filtered counter and engine reconnects | 0.7 |
-| **Total** | | **8.65** |
+| 11/18/2026 | Roadmap step 2.1: decided on a local companion app alongside the extension for the heavy models; wrote the decision note and updated the roadmap | 0.15 |
+| 11/18/2026 | Roadmap step 2.2: built the companion app (Whisper small on the Mac GPU over a local WebSocket, with pairing), connected the extension to it with fallback to the built-in model, measured word-timing accuracy; tested on real YouTube in Chrome including quitting and restarting the companion | 0.2 |
+| **Total** | | **9.0** |

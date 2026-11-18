@@ -9,3 +9,5 @@ Clean-Ears-Extension/
 # Generated test reference (see tests/lookahead/README.md)
 *.f32
 tests/lookahead/fixtures/ten-minutes.*
+companion/.venv/
+__pycache__/

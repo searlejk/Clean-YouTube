@@ -22,6 +22,13 @@
   // would leak. Each caught word is shifted back by the model's lag and
   // covered by settings.cover seconds on both sides.
   const timestampLag = () => PF.MODELS[settings.model]?.timestampLag ?? { start: 0.3, end: 0.1 };
+  // Lookahead words are stored in true time: each reply is corrected by the
+  // timing bias of the engine and model that produced it.
+  function lagFor(reply) {
+    if (reply.engine === 'companion') return PF.COMPANION_MODELS[reply.model]?.timestampLag ?? { start: 0.25, end: -0.05 };
+    return PF.MODELS[reply.model]?.timestampLag ?? timestampLag();
+  }
+  const NO_LAG = { start: 0, end: 0 };
   const RAMP = 0.008; // short fades avoid clicks
   const MERGE_GAP = 0.05;
 
@@ -447,8 +454,16 @@
       if (msg.error) job.reject(new Error(msg.error));
       else {
         state.processingMs = state.processingMs ? state.processingMs * 0.8 + msg.processingMs * 0.2 : msg.processingMs;
-        job.resolve(msg);
+        state.lastEngine = msg.engine === 'companion' ? 'companion' : 'browser';
+        const lag = lagFor(msg);
+        const words = (msg.words || []).map((w) => ({ text: w.text, start: w.start - lag.start, end: w.end - lag.end }));
+        job.resolve({ ...msg, words });
       }
+      return;
+    }
+    if (msg.type === 'companion') {
+      state.companion = msg;
+      updateBadges();
       return;
     }
     if (msg.type === 'status') {
@@ -1143,14 +1158,15 @@
   const transcriptCache = new TranscriptCache();
   transcriptCache.init();
 
-  // "<videoId>:<model>" for the main YouTube player's video; null for ads,
-  // previews and anything that isn't a watch page or Short.
+  // The YouTube video ID for the main player's video; null for ads, previews
+  // and anything that isn't a watch page or Short. Saved transcripts are in
+  // true time (each engine's bias removed), so any engine can reuse them.
   function videoKey(video) {
     if (!video || !video.matches('#movie_player video, .html5-main-video, #shorts-player video, ytd-reel-video-renderer video')) return null;
     if (video.closest('.ad-showing')) return null;
     const m = location.pathname.match(/^\/shorts\/([\w-]{6,})/);
     const id = m ? m[1] : new URLSearchParams(location.search).get('v');
-    return id ? `${id}:${settings.model}` : null;
+    return id ? `${id}:t` : null;
   }
 
   function saveTranscript(look) {
@@ -1209,9 +1225,15 @@
     return btoa(bin);
   }
 
+  // Lookahead can run on the companion app even while the in-browser model
+  // is still loading.
+  function transcribeReady() {
+    return !!port && (state.engine === 'ready' || state.companion?.state === 'ready');
+  }
+
   function requestTranscribe(samples, offset) {
     return new Promise((resolve, reject) => {
-      if (!port || state.engine !== 'ready') return reject(new Error('engine not ready'));
+      if (!transcribeReady()) return reject(new Error('engine not ready'));
       const id = nextTranscribeId++;
       transcribeJobs.set(id, { resolve, reject });
       port.postMessage({ type: 'transcribe', id, offset, pcm16: float32ToPcm16Base64(samples) });
@@ -1340,7 +1362,7 @@
       return;
     }
     const look = lookFor(video);
-    const engineReady = !!port && state.engine === 'ready';
+    const engineReady = transcribeReady();
     const cached = transcriptCache.has(videoKey(video));
     // With a saved transcript there's no need to wait for Whisper; the hold
     // below just gives the page bridge a moment to start and the cache to load.
@@ -1363,7 +1385,7 @@
     const look = lookFor(video);
     if (!look || !ctx) return;
     const t = video.currentTime;
-    const lag = timestampLag();
+    const lag = NO_LAG; // lookahead words are already corrected
     const pad = settings.cover;
     for (const m of PFFilter.findMatches(look.words.between(t - 3, t + 1), compiled)) {
       const m0 = m.start - lag.start - pad;
@@ -1400,7 +1422,7 @@
   // Turn upcoming swears in the transcript into mutes, timed by ClockSync.
   function scheduleLookaheadMutes(video, look) {
     const t = video.currentTime;
-    const lag = timestampLag();
+    const lag = NO_LAG; // lookahead words are already corrected
     const pad = settings.cover;
     for (const m of PFFilter.findMatches(look.words.between(t - 2, t + SCHEDULE_AHEAD), compiled)) {
       const key = Math.round(m.start * 100) + ':' + m.text;
@@ -1422,7 +1444,7 @@
     if (!ctx || !settings.enabled) return;
     const v = activeVideo();
     for (const look of looks.values()) {
-      const mine = v && look.src === v.src && settings.lookahead && port && state.engine === 'ready';
+      const mine = v && look.src === v.src && settings.lookahead && transcribeReady();
       if (mine) look.transcriber.start();
       else look.transcriber.stop();
       const lv = videoForSrc(look.src);
@@ -1471,7 +1493,7 @@
         lastCalibration = ctx.currentTime;
         look.sync.calibrate(ctx.currentTime);
       }
-    } else if (!lookaheadBlocked(v) && port && state.engine === 'ready' && performance.now() - lastUpgradeTry > 5000) {
+    } else if (!lookaheadBlocked(v) && transcribeReady() && performance.now() - lastUpgradeTry > 5000) {
       // Started in delay mode (e.g. the model was still loading): switch once,
       // by seeking the real playhead back to the picture on screen so nothing
       // is skipped; the seek then holds until the transcript is ready.
@@ -1495,6 +1517,8 @@
         fallbackReason,
         badge: lastBadgeText,
         connLog,
+        companion: state.companion || null,
+        lastEngine: state.lastEngine || null,
         heard: state.lastText || '', // last delay-mode transcript text
         passMs: state.processingMs ? Math.round(state.processingMs) : null,
         live: v ? isLive(v) : null,
@@ -1550,7 +1574,7 @@
         return { text: 'Clean Ears: reconnecting…', warn: true };
     }
     if (holding) return { text: 'Clean Ears: reading ahead…' };
-    if (mode === 'lookahead') return { text: `Clean Ears on · no delay · ${state.caught} filtered` };
+    if (mode === 'lookahead') return { text: `Clean Ears on · no delay${engineNote()} · ${state.caught} filtered` };
     const why = fallbackReason ? ` (${fallbackReason})` : '';
     if (ctx && ctx.currentTime < flushUntil && anyPlaying()) {
       return { text: `Clean Ears: checking ahead (${currentDelay.toFixed(1)} s)…` };
@@ -1559,6 +1583,11 @@
       return { text: 'Clean Ears is falling behind – raise the delay or pick a smaller model', warn: true };
     }
     return { text: `Clean Ears on · ${currentDelay.toFixed(1)} s delay${why} · ${state.caught} filtered` };
+  }
+
+  // Which speech engine is reading ahead, for the label.
+  function engineNote() {
+    return state.companion?.state === 'ready' ? ' · companion app' : '';
   }
 
   let lastBadgeText = '';
@@ -1603,6 +1632,7 @@
       autoDelay: settings.autoDelay,
       mode,
       fallbackReason,
+      companion: state.companion || null,
       measuredNeed: measuredNeed(),
       wordsMeasured: needs.length,
     });

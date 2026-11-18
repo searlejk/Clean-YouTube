@@ -143,7 +143,14 @@ async function pollStatus() {
       return;
   }
 
-  const parts = [device];
+  const c = st.companion;
+  const companion =
+    c?.state === 'ready'
+      ? `Companion app · ${PF.COMPANION_MODELS[c.model]?.label || c.model}${c.device === 'mps' ? ' on GPU' : c.device ? ' on CPU' : ''}`
+      : c?.state === 'loading'
+        ? 'Companion app loading…'
+        : '';
+  const parts = [companion || device];
   if (st.processingMs) parts.push(`${Math.round(st.processingMs)} ms per pass`);
   if (st.headroom != null) parts.push(`${Math.max(0, st.headroom).toFixed(1)} s headroom`);
   if (st.missed) parts.push(`${st.missed} caught too late`);

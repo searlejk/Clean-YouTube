@@ -1,6 +1,7 @@
 // Saves each video's transcript so rewatching starts with no delay
 // (roadmap step 1.6). Stored in the extension's own storage (not the page's),
-// keyed by "<videoId>:<model>" because models time words differently.
+// keyed by video. Format 2 stores true word times (each engine's timing bias
+// already removed); format 1 (raw, per-model times) is ignored.
 // Least-recently-watched videos are dropped once the cache passes `maxBytes`.
 //
 //   const cache = new TranscriptCache();          // chrome.storage.local by default
@@ -15,14 +16,14 @@
   // Compact form: words as [text, startMs, endMs], stretches as [fromMs, toMs].
   function serialize(words) {
     return {
-      v: 1,
+      v: 2,
       words: words.words.map((w) => [w.text, Math.round(w.start * 1000), Math.round(w.end * 1000)]),
       covered: words.covered.map(([a, b]) => [Math.round(a * 1000), Math.round(b * 1000)]),
     };
   }
 
   function merge(words, data) {
-    if (!data || data.v !== 1) return false;
+    if (!data || data.v !== 2) return false;
     const all = data.words.map(([text, s, e]) => ({ text, start: s / 1000, end: e / 1000 }));
     for (const [a, b] of data.covered) {
       const from = a / 1000;

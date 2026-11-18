@@ -243,19 +243,39 @@ feel real-time" below for the options and why lookahead capture was chosen.
 
 ## 2. Audio in (`yt-dlp → ffmpeg, 16 kHz`)
 
-The diagram's entry point. In the extension, step 1's lookahead capture plays
-this role. `yt-dlp` only comes into play if we add a local companion app
-(decision 2.1).
+The diagram's entry point. Step 1's lookahead capture supplies the audio; the
+extension sends it to a local companion app that runs the heavy models.
 
-- [ ] **2.1 Architecture decision: browser-only vs. browser + local companion
-      app.** WhisperX, pyannote, F5-TTS/XTTS and MDX-Net are Python/PyTorch
-      tools; some have ONNX ports that could run in the browser, others don't.
-      Write down which steps run where.
-      *Done when:* a short decision note is in the repo.
-- [ ] 2.2 (If companion) Extension ↔ companion link (localhost WebSocket or
-      Chrome native messaging); audio in, words out.
-- [ ] 2.3 (If companion) `yt-dlp → ffmpeg` 16 kHz mono stream for a video ID,
-      for personal use only (note YouTube's terms).
+- [x] **2.1 Architecture decision: browser-only vs. browser + local companion
+      app.** *Decided 11/18/2026:* extension + local companion app (Python,
+      PyTorch on the Mac GPU) for steps 4–6 and 8–11; the extension keeps the
+      audio tap, profanity decision, mixer and player. Packaging everything
+      into the extension can be revisited once quality is good. See
+      [docs/decisions/2.1-companion-app.md](docs/decisions/2.1-companion-app.md).
+- [x] **2.2 Extension ↔ companion link.** Localhost-only WebSocket with a
+      pairing token (or Chrome native messaging); lookahead audio in, timed
+      words out. If the companion isn't running, the extension falls back to
+      in-browser Whisper and the label says which is in use.
+      *Done when:* a real YouTube video is transcribed by the companion with
+      no delay, and quitting the companion mid-video falls back cleanly.
+      *Result (v1.4.0, [companion/](companion/)):* Python server
+      (faster-whisper small.en on the M4 GPU, 0.67 s per 10 s of audio) on
+      `ws://127.0.0.1:47823`. Pairing is by the WebSocket Origin: web pages are
+      refused, and the first extension to connect is remembered. The offscreen
+      page sends lookahead windows to it and falls back to the in-browser model
+      for anything it doesn't answer. Each engine's word-timing bias was
+      measured on 61 words of synthetic speech with exact timings, and words
+      are stored corrected (transcript cache format 2).
+      Real YouTube in Chrome (player muted): "no delay · companion app",
+      35–45 s read ahead, swears muted 5.3–5.7 s early. Quitting the companion
+      mid-video switched to the in-browser model within ~4 s with no pause or
+      delay, and the label dropped "companion app". Restarting it reconnected
+      in ~2 s.
+- [ ] 2.3 Companion setup: one install script (Python environment, model
+      downloads), a start command, and a status check in the popup.
+- [ ] 2.4 (Optional, later) `yt-dlp → ffmpeg` 16 kHz mono stream for a video
+      ID, to process a whole video before it plays. Personal use only; off by
+      default (against YouTube's terms).
 
 ## 3. Delay buffer (2–3 s lookahead)
 
@@ -265,8 +285,8 @@ this role. `yt-dlp` only comes into play if we add a local companion app
 
 ## 4. Source separation (MDX-Net small / Spleeter)
 
-- [ ] 4.1 Pick a model with an ONNX build (UVR MDX-Net small / Spleeter
-      2-stem); measure speed on WebGPU vs. companion.
+- [ ] 4.1 Pick a model (UVR MDX-Net small / Demucs / Spleeter 2-stem) for
+      the companion; measure speed on this Mac.
       *Done when:* separating 10 s of audio takes < 1 s on this Mac.
 - [ ] 4.2 Run it on the lookahead audio; produce vocal and background stems.
 - [ ] 4.3 Feed the vocal stem to ASR; check that transcription improves on
@@ -282,8 +302,8 @@ this role. `yt-dlp` only comes into play if we add a local companion app
       *Done when:* word starts land within ±50 ms on the waveform-labelled
       test clips, for every model size.
 - [ ] 5.3 Shrink the "word cover" padding once timings are accurate.
-- [ ] 5.4 Decide WhisperX proper (companion) vs. an in-browser equivalent
-      (Whisper + wav2vec2 ONNX).
+- [x] 5.4 Decide WhisperX proper (companion) vs. an in-browser equivalent
+      (Whisper + wav2vec2 ONNX). *Decided in 2.1: WhisperX in the companion.*
 
 ## 6. Keyword-spotting model (swear words)
 
@@ -307,8 +327,7 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
 **B's** voice, never in speaker A's.
 
 - [ ] 8.1 Label each word with a speaker (speaker embeddings + clustering,
-      e.g. pyannote via the companion app, or a small ONNX embedding model in
-      the browser).
+      pyannote in the companion app).
       *Done when:* on a 2-person interview, ≥ 95% of words get the right speaker.
 - [ ] 8.2 Stable identities: the same person keeps the same label for the
       whole video, including after pauses, seeks, and when someone returns
@@ -324,7 +343,7 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
 
 - [ ] 10.1 Pick a **small** voice-cloning model that runs on a normal laptop
       without overwhelming it. Candidates: F5-TTS small, XTTS-v2, OpenVoice,
-      or any TTS + an RVC voice converter; prefer ONNX/WebGPU-capable ones.
+      or any TTS + an RVC voice converter, run in the companion.
       Write down download size, memory use, and speed on this Mac.
       *Done when:* one placeholder word in a sampled voice generates in
       under 1 s, using under ~1 GB of memory.

@@ -68,7 +68,17 @@
   };
 
   // Bumped when stored settings need a one-time migration (see background.js).
+  // Models the companion app (roadmap step 2.2) may run, with how its word
+  // edges are off. Positive = late, negative = early. Measured on 61 words of
+  // synthetic speech with exact timings; set so the mute still covers the
+  // latest start and earliest end seen.
+  const COMPANION_MODELS = {
+    'small.en': { label: 'Whisper small', timestampLag: { start: 0.05, end: -0.2 } },
+    'base.en': { label: 'Whisper base', timestampLag: { start: -0.1, end: -0.35 } },
+    'tiny.en': { label: 'Whisper tiny', timestampLag: { start: 0.25, end: -0.05 } },
+  };
+
   const SETTINGS_VERSION = 2;
 
-  root.PF = { DEFAULTS, DEFAULT_WORDS, MODELS, SETTINGS_VERSION };
+  root.PF = { DEFAULTS, DEFAULT_WORDS, MODELS, COMPANION_MODELS, SETTINGS_VERSION };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

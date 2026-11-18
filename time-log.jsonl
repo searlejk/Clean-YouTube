@@ -58,3 +58,15 @@
 {"ts": "2026-11-18T15:37:41+00:00", "event": "answer", "gap_end": "2026-11-18T15:37:32+00:00", "minutes": 0.0}
 {"ts": "2026-11-18T16:17:18+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
 {"ts": "2026-11-18T16:50:24+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T16:50:47+00:00", "event": "answer", "gap_end": "2026-11-18T16:50:24+00:00", "minutes": 0.0}
+{"ts": "2026-11-18T16:50:53+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T16:55:35+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T16:55:54+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T16:58:44+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T16:59:42+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T16:59:49+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T17:10:53+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "transcript"}
+{"ts": "2026-11-18T17:10:53+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T17:11:33+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T17:12:11+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T17:17:31+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}

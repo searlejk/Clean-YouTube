@@ -1,0 +1,19 @@
+# Clean Ears companion app
+
+Runs the speech model on your Mac instead of inside Chrome (roadmap step 2.2;
+why: [docs/decisions/2.1-companion-app.md](../docs/decisions/2.1-companion-app.md)).
+While it's running, the extension sends it the audio it reads ahead and gets
+back timed words. If it isn't running, the extension uses its built-in model.
+
+```sh
+companion/start.sh                 # Whisper small on the Mac GPU (default)
+companion/start.sh --model base.en # faster, a little less accurate
+```
+
+- Listens only on `127.0.0.1:47823`, never the network.
+- Only a Chrome extension can connect, and the first one to connect is
+  remembered (pairing). To pair a different copy: `companion/start.sh --reset-pairing`.
+- Settings live in `~/Library/Application Support/CleanEars/companion.json`.
+
+Speed on an M4 (10 s of audio): small.en 0.67 s on GPU, base.en 0.25 s,
+tiny.en 0.2 s on CPU.
