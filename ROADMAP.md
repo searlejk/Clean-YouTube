@@ -271,8 +271,22 @@ extension sends it to a local companion app that runs the heavy models.
       mid-video switched to the in-browser model within ~4 s with no pause or
       delay, and the label dropped "companion app". Restarting it reconnected
       in ~2 s.
-- [ ] 2.3 Companion setup: one install script (Python environment, model
+- [x] 2.3 Companion setup: one install script (Python environment, model
       downloads), a start command, and a status check in the popup.
+      *Result (v1.5.1):* `companion/install.sh` (Python env + model + a
+      self-test; from scratch it took 23 s with packages cached and reported
+      "small.en on GPU, 467 ms for 10 s of audio"), `companion/start.sh`, and
+      `companion/login-item.sh on|off|status` to start it at login (a per-user
+      LaunchAgent; not turned on). The popup asks the companion directly
+      whether it's running, so it works on any page. While the companion
+      runs, the built-in model isn't loaded at all. Delay-mode streaming (live
+      streams) goes to the companion too, and the built-in model loads only if
+      the companion is off or quits.
+      Real YouTube: normal video at no delay via the companion with the
+      built-in model never loaded; quitting the companion loaded the built-in
+      model in < 1 s and stayed at no delay; a live stream was transcribed by
+      the companion (15 windows a minute, per its log). Remaining hand checks
+      are in [TESTING.md](TESTING.md).
 - [ ] 2.4 (Optional, later) `yt-dlp → ffmpeg` 16 kHz mono stream for a video
       ID, to process a whole video before it plays. Personal use only; off by
       default (against YouTube's terms).

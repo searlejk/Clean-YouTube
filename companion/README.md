@@ -6,9 +6,15 @@ While it's running, the extension sends it the audio it reads ahead and gets
 back timed words. If it isn't running, the extension uses its built-in model.
 
 ```sh
+companion/install.sh               # once: Python env, model download, self-test
 companion/start.sh                 # Whisper small on the Mac GPU (default)
 companion/start.sh --model base.en # faster, a little less accurate
+companion/login-item.sh on         # start automatically at login (off: undo)
 ```
+
+The popup's "Companion app" section shows whether it's running. While it runs
+the extension doesn't load its built-in model at all; if it quits, the
+built-in model loads and takes over.
 
 - Listens only on `127.0.0.1:47823`, never the network.
 - Only a Chrome extension can connect, and the first one to connect is

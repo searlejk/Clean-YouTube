@@ -91,6 +91,48 @@ async function init() {
 
   pollStatus();
   setInterval(pollStatus, 1000);
+  watchCompanion();
+}
+
+// The companion app (roadmap step 2.3): ask it directly whether it's running,
+// so this works even when no YouTube tab is open.
+const COMPANION_URL = 'ws://127.0.0.1:47823';
+function showCompanion(kind, text, hint) {
+  $('companion-dot').className = 'dot ' + kind;
+  $('companion-text').textContent = text;
+  $('companion-hint').textContent = hint;
+}
+function watchCompanion() {
+  let ws;
+  try {
+    ws = new WebSocket(COMPANION_URL);
+  } catch {
+    return setTimeout(watchCompanion, 3000);
+  }
+  let answered = false;
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', version: 1 }));
+  ws.onmessage = (e) => {
+    let m;
+    try {
+      m = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    if (m.type !== 'status') return;
+    answered = true;
+    const name = PF.COMPANION_MODELS[m.model]?.label || m.model;
+    if (m.state === 'ready') showCompanion('ok', `Running · ${name} on ${m.device === 'mps' ? 'GPU' : 'CPU'}`, 'Reads ahead with a bigger, more accurate model than the one built into Chrome.');
+    else if (m.state === 'loading') showCompanion('warn', `Loading ${name}…`, 'Clean Ears uses the built-in model until it is ready.');
+    else showCompanion('err', 'Companion error', m.message || '');
+  };
+  ws.onclose = () => {
+    if (!answered) {
+      showCompanion('', 'Not running', 'Optional: runs a bigger, more accurate model outside Chrome. To start it, run companion/start.sh in Terminal (first time: companion/install.sh). To start it at every login: companion/login-item.sh on.');
+    } else {
+      showCompanion('', 'Not running', 'It stopped; Clean Ears switched to the built-in model.');
+    }
+    setTimeout(watchCompanion, 3000);
+  };
 }
 
 let liveDelay = null;

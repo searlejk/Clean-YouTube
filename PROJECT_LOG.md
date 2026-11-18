@@ -11,4 +11,5 @@
 | 11/18/2026 | Roadmap step 1.7: tested live streams, Shorts, speed changes and background tabs on real YouTube in Chrome; fixed the live-stream check, the filtered counter and engine reconnects | 0.7 |
 | 11/18/2026 | Roadmap step 2.1: decided on a local companion app alongside the extension for the heavy models; wrote the decision note and updated the roadmap | 0.15 |
 | 11/18/2026 | Roadmap step 2.2: built the companion app (Whisper small on the Mac GPU over a local WebSocket, with pairing), connected the extension to it with fallback to the built-in model, measured word-timing accuracy; tested on real YouTube in Chrome including quitting and restarting the companion | 0.2 |
-| **Total** | | **9.0** |
+| 11/18/2026 | Roadmap step 2.3: companion install script with self-test, start-at-login option, companion status in the popup; the built-in model no longer loads while the companion runs, and live streams use the companion too; tested on real YouTube in Chrome; started a hand-testing checklist | 0.3 |
+| **Total** | | **9.3** |

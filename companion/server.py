@@ -66,6 +66,9 @@ class Engine:
         self.error = None
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.loaded = asyncio.Event()
+        self.served = 0  # windows since the last stats line
+        self.audio_s = 0.0
+        self.busy_s = 0.0
 
     def _load(self):
         from faster_whisper import WhisperModel
@@ -111,7 +114,19 @@ class Engine:
         return words, "".join(text)
 
     async def transcribe(self, samples, offset):
-        return await asyncio.get_running_loop().run_in_executor(self.pool, self._transcribe, samples, offset)
+        t = time.perf_counter()
+        out = await asyncio.get_running_loop().run_in_executor(self.pool, self._transcribe, samples, offset)
+        self.served += 1
+        self.audio_s += len(samples) / SR
+        self.busy_s += time.perf_counter() - t
+        return out
+
+    async def report(self, every=60):
+        while True:
+            await asyncio.sleep(every)
+            if self.served:
+                log.info("served %d windows (%.0f s of audio) in the last %d s; model busy %.0f%% of the time", self.served, self.audio_s, every, 100 * self.busy_s / every)
+                self.served, self.audio_s, self.busy_s = 0, 0.0, 0.0
 
     def status(self):
         if not self.loaded.is_set():
@@ -192,6 +207,22 @@ async def handle(ws, engine):
         log.info("extension disconnected")
 
 
+async def check(args):
+    """Install-time self test: model downloaded, GPU (or CPU) works, fast enough."""
+    engine = Engine(args.model, args.device)
+    await engine.load()
+    if engine.error:
+        print(f"FAILED: {engine.error}")
+        sys.exit(1)
+    rng = np.random.default_rng(0)
+    clip = (rng.standard_normal(10 * SR) * 0.01).astype(np.float32)
+    t = time.perf_counter()
+    await engine.transcribe(clip, 0.0)
+    ms = (time.perf_counter() - t) * 1000
+    where = "GPU" if engine.device == "mps" else "CPU"
+    print(f"OK: {args.model} on {where}, {ms:.0f} ms for 10 s of audio ({10000 / ms:.0f}x real time)")
+
+
 async def main():
     p = argparse.ArgumentParser(description="Clean Ears companion app")
     p.add_argument("--model", default="small.en", choices=["tiny.en", "base.en", "small.en"])
@@ -199,9 +230,14 @@ async def main():
     p.add_argument("--port", type=int, default=int(os.environ.get("CLEAN_EARS_PORT", 47823)))
     p.add_argument("--reset-pairing", action="store_true", help="forget the paired extension")
     p.add_argument("--allow-any-extension", action="store_true", help="skip pairing (development)")
+    p.add_argument("--check", action="store_true", help="download the model, time one pass, and exit")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    for noisy in ("httpx", "faster_whisper"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+    if args.check:
+        return await check(args)
     cfg = load_config()
     if args.reset_pairing:
         cfg.pop("pairedOrigin", None)
@@ -210,6 +246,7 @@ async def main():
 
     engine = Engine(args.model, args.device)
     asyncio.create_task(engine.load())
+    asyncio.create_task(engine.report())
     async with serve(
         lambda ws: handle(ws, engine),
         "127.0.0.1",

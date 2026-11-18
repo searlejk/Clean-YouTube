@@ -55,7 +55,13 @@
     <section>
       <label for="model" class="label">Speech model</label>
       <select id="model"></select>
-      <p class="hint">Runs entirely on your computer. Downloaded once, then cached.</p>
+      <p class="hint">Built into Chrome; used when the companion app isn't running. Runs entirely on your computer. Downloaded once, then cached.</p>
+    </section>
+
+    <section>
+      <span class="label">Companion app</span>
+      <div class="status-line"><span id="companion-dot" class="dot"></span><span id="companion-text">Checking…</span></div>
+      <p class="hint" id="companion-hint"></p>
     </section>
 
     <section>

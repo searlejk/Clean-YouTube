@@ -191,6 +191,8 @@
   // Remember the measured need per model and processor, so the next video
   // starts at the right delay instead of the fallback.
   function needKey() {
+    const c = state.companion;
+    if (c?.state === 'ready') return `autoDelayNeed:companion:${c.model}:${c.device || 'unknown'}`;
     return `autoDelayNeed:${settings.model}:${state.device || 'unknown'}`;
   }
 
@@ -294,7 +296,7 @@
   // Optionally keep the sound off until Whisper is loaded and listening.
   function updateReadyGate() {
     if (!ctx) return;
-    const closed = settings.enabled && settings.muteUntilReady && state.engine !== 'ready';
+    const closed = settings.enabled && settings.muteUntilReady && engineState() !== 'ready';
     readyGain.gain.setTargetAtTime(closed ? 0 : 1, ctx.currentTime, 0.01);
   }
 
@@ -430,6 +432,7 @@
         for (const job of transcribeJobs.values()) job.reject(new Error('engine disconnected'));
         transcribeJobs.clear();
         state.engine = 'disconnected';
+        state.companion = null;
         connLog.push({ at: Math.round(performance.now()), event: 'disconnected', error: chrome.runtime.lastError?.message });
         updateReadyGate();
         updateBadges();
@@ -462,7 +465,13 @@
       return;
     }
     if (msg.type === 'companion') {
+      const wasReady = state.companion?.state === 'ready';
       state.companion = msg;
+      if (wasReady !== (msg.state === 'ready')) {
+        storedNeed = null; // different engine, different speed
+        loadStoredNeed();
+      }
+      updateReadyGate();
       updateBadges();
       return;
     }
@@ -484,8 +493,8 @@
 
     const delay = currentDelay;
     const pad = settings.cover;
+    const lag = msg.engine ? lagFor(msg) : timestampLag();
     for (const m of PFFilter.findMatches(msg.words, compiled)) {
-      const lag = timestampLag();
       const s = timeOf(m.start - lag.start - pad);
       const e = timeOf(m.end - lag.end + pad);
       if (s == null || e == null) continue;
@@ -1228,7 +1237,15 @@
   // Lookahead can run on the companion app even while the in-browser model
   // is still loading.
   function transcribeReady() {
-    return !!port && (state.engine === 'ready' || state.companion?.state === 'ready');
+    return engineState() === 'ready';
+  }
+
+  // The speech engine as far as filtering is concerned: ready if either the
+  // companion app or the built-in model can answer (the built-in model isn't
+  // loaded at all while the companion runs).
+  function engineState() {
+    if (port && state.companion?.state === 'ready') return 'ready';
+    return state.engine;
   }
 
   function requestTranscribe(samples, offset) {
@@ -1555,7 +1572,12 @@
   function badgeText() {
     if (!settings.enabled) return null;
     if (ctx && ctx.state === 'suspended') return { text: 'Clean Ears: click anywhere to turn the sound on', warn: true };
-    switch (state.engine) {
+    // Reading ahead keeps working from the transcript already made while an
+    // engine loads or reconnects.
+    if (mode === 'lookahead' && !holding && engineState() !== 'error') {
+      return { text: `Clean Ears on · no delay${engineNote()} · ${state.caught} filtered` };
+    }
+    switch (engineState()) {
       case 'idle':
         return anyPlaying() ? { text: 'Clean Ears: starting…' } : { text: 'Clean Ears: ready when you press play' };
       case 'connecting':
