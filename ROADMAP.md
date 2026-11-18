@@ -221,10 +221,23 @@ feel real-time" below for the options and why lookahead capture was chosen.
       | Node: save/load, partial coverage, no clobbering, LRU eviction | pass |
       | Harness, fresh page, second viewing | no delay from media time 0 while Whisper was still loading; 41.6 s ahead at once; mutes ~4.9 s early, 0 late |
       | **Real YouTube in Chrome**, full reload at 11:30 | no delay from the first frame (0.5 s before it while the cache loaded); **99.5 s ahead immediately** vs ~4 s on first viewing; swear muted 4.9 s early |
-- [ ] **1.7 Fallbacks and edge cases.** Live streams, ads, Shorts, DRM videos,
+- [x] **1.7 Fallbacks and edge cases.** Live streams, ads, Shorts, DRM videos,
       playback-speed changes, background tabs.
       *Done when:* each case either works with lookahead or falls back cleanly
       to the delay line, with the status label saying which.
+      *Result (v1.3.0, real YouTube in Chrome, player muted):*
+      | Case | What happens | Label |
+      |---|---|---|
+      | Live stream (at or behind the live edge) | delay line, transcribing | "6.0 s delay (live stream)" |
+      | Finished live stream (now a recording) | reads ahead, no delay (34 s ahead) | "no delay" |
+      | Shorts, and swiping to the next one | reads ahead; next Short back to no delay in 0.4 s, own cache key | "no delay" |
+      | Speed 2×, 1.5×, 0.5×, back to 1× | stays no delay; mutes re-timed on each change, still 3.4–4.8 s early | "no delay" |
+      | Background tab (45 s hidden) | kept muting 3.5–4.9 s early, 0 missed | "no delay" |
+      | Ads | own audio source, so handled like any video; not saved to the cache. No ad appeared during testing | — |
+      | DRM (protected) video | skips the read-ahead tap, uses the delay line. Not tested live (needs a paid film) | "delay (protected video)" |
+      Fixes found while testing: the "N filtered" count didn't update in no-delay
+      mode; a live stream watched behind the live edge wasn't seen as live; a
+      stalled engine start could block reconnecting.
 
 ---
 

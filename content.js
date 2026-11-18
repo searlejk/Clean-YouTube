@@ -359,7 +359,8 @@
   }
 
   let port = null;
-  let connecting = false;
+  const connLog = []; // test diagnostics: engine connects and disconnects
+  let connecting = 0; // when the current start attempt began (0 = none)
 
   // Whisper only stays loaded while something is playing. After a while with
   // nothing playing, this tab lets go of the engine; once no tab is using it,
@@ -389,13 +390,28 @@
   }, 5000);
 
   async function connectEngine() {
-    if (port || connecting || !settings.enabled) return;
-    if (!chrome.runtime?.id) return; // extension was reloaded; this script is orphaned
-    connecting = true;
+    if (port || !settings.enabled) return;
+    // A start that never answered (e.g. the background worker was restarted
+    // mid-reply) mustn't block retries forever.
+    if (connecting && performance.now() - connecting < 15000) return;
+    if (!chrome.runtime?.id) {
+      // The extension was reloaded or updated; this copy can't reach it.
+      state.engine = 'error';
+      state.message = 'Clean Ears was updated – reload this page';
+      updateBadges();
+      return;
+    }
+    const attempt = (connecting = performance.now());
+    connLog.push({ at: Math.round(attempt), event: 'connect' });
+    if (connLog.length > 20) connLog.shift();
     state.engine = 'connecting';
     updateBadges();
     try {
-      const res = await chrome.runtime.sendMessage({ type: 'pf:ensureOffscreen' });
+      const res = await Promise.race([
+        chrome.runtime.sendMessage({ type: 'pf:ensureOffscreen' }),
+        new Promise((_, no) => setTimeout(() => no(new Error('Speech engine did not start')), 15000)),
+      ]);
+      if (attempt !== connecting || port) return; // a newer attempt took over
       if (!res?.ok) throw new Error(res?.error || 'Could not start the speech engine');
       // A new engine session counts samples from zero again.
       sentSamples = 0;
@@ -407,6 +423,7 @@
         for (const job of transcribeJobs.values()) job.reject(new Error('engine disconnected'));
         transcribeJobs.clear();
         state.engine = 'disconnected';
+        connLog.push({ at: Math.round(performance.now()), event: 'disconnected', error: chrome.runtime.lastError?.message });
         updateReadyGate();
         updateBadges();
         setTimeout(() => anyPlaying() && connectEngine(), 2000);
@@ -418,7 +435,7 @@
       updateBadges();
       setTimeout(() => anyPlaying() && connectEngine(), 5000);
     } finally {
-      connecting = false;
+      if (attempt === connecting) connecting = 0;
     }
   }
 
@@ -1044,6 +1061,9 @@
       d.showCurrent();
     });
     video.addEventListener('loadstart', discontinuity);
+    // Mutes already scheduled were timed for the old speed; the next tick
+    // re-times them (ClockSync restarts its fit on a rate change).
+    video.addEventListener('ratechange', () => clearLookaheadMutes());
 
     // Pause stops the picture and sound right away (instead of letting the
     // delayed part play out) and rewinds the real playhead to the frame on
@@ -1111,6 +1131,7 @@
   const HOLD_MAX_MS = 4000; // the first Whisper pass after loading can take ~3 s
   const SCHEDULE_AHEAD = 6; // upcoming seconds of words turned into mutes
   let mode = 'delay'; // 'delay' | 'lookahead'
+  let fallbackReason = null; // why the delay line is in use, for the label
   let holding = null; // { video } while playback is held for the transcript
   let lastCalibration = 0;
   let lastUpgradeTry = 0;
@@ -1227,6 +1248,7 @@
     const m = e.data;
     if (e.source !== window || !m || m.__cleanEars !== 1 || m.type !== 'pcm') return;
     if (!settings.enabled || !settings.lookahead || !(m.samples instanceof Float32Array)) return;
+    if (videoForSrc(m.src)?.mediaKeys) return; // encrypted: decoded audio is meaningless
     const look = looks.get(m.src) || createLook(m.src);
     look.timeline.add({ time: m.time, samples: m.samples });
   });
@@ -1248,6 +1270,7 @@
   function enterLookahead(video) {
     if (mode !== 'lookahead') noteMode('lookahead', video || activeVideo());
     mode = 'lookahead';
+    fallbackReason = null;
     setDelay(0);
     if (video) muteIfResumingInsideSwear(video);
     if (ctx) {
@@ -1284,8 +1307,38 @@
     video.play().catch(() => {});
   }
 
+  // Why read-ahead can't be used for this video (null if it can).
+  //   live stream: YouTube only has a few seconds downloaded past the live
+  //     edge, so there's nothing to read ahead; the delay line does the job.
+  //   protected video: DRM (EME) media is encrypted in the page, so the
+  //     bridge would only decode noise.
+  function lookaheadBlocked(video) {
+    if (!settings.lookahead) return 'read-ahead off';
+    if (video.mediaKeys) return 'protected video';
+    if (isLive(video)) return 'live stream';
+    return null;
+  }
+
+  function isLive(video) {
+    if (video.duration === Infinity) return true;
+    const player = video.closest('.html5-video-player');
+    // The "Live" badge shows for the whole stream, including when watching
+    // behind the live edge (it's only marked disabled then).
+    return !!(player && (player.classList.contains('ytp-live') || player.querySelector('.ytp-live-badge')?.offsetParent));
+  }
+
   // Decide how to play from here (on play and after seeks).
   function chooseMode(video, d) {
+    fallbackReason = lookaheadBlocked(video);
+    if (fallbackReason) {
+      if (mode === 'lookahead') enterDelayMode();
+      else {
+        setDelay(targetDelay());
+        flush();
+      }
+      updateBadges();
+      return;
+    }
     const look = lookFor(video);
     const engineReady = !!port && state.engine === 'ready';
     const cached = transcriptCache.has(videoKey(video));
@@ -1361,6 +1414,7 @@
       look.scheduled.add(key);
       if (SILENT_TEST) testLog.mutes.push({ text: m.text, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
       addInterval(c0 + currentDelay, c1 + currentDelay, m);
+      updateBadges(); // refresh the "N filtered" count
     }
   }
 
@@ -1373,6 +1427,15 @@
       else look.transcriber.stop();
       const lv = videoForSrc(look.src);
       if (lv) look.timeline.evict(lv.currentTime);
+    }
+    // Keep the label's "why there's a delay" current (live is sometimes only
+    // known once the player has set itself up).
+    if (v && mode === 'delay') {
+      const why = lookaheadBlocked(v);
+      if (why !== fallbackReason) {
+        fallbackReason = why;
+        updateBadges();
+      }
     }
     const look = lookFor(v);
     if (!v || !look) return;
@@ -1393,6 +1456,11 @@
     look.sync.notePlayhead(ctx.currentTime, v.currentTime, { paused: v.paused || v.seeking, rate: v.playbackRate });
     if (v.paused || holding) return;
 
+    if (mode === 'lookahead' && lookaheadBlocked(v)) {
+      fallbackReason = lookaheadBlocked(v);
+      enterDelayMode();
+      return;
+    }
     if (mode === 'lookahead') {
       if (transcriptAhead(look, v) < LOOKAHEAD_GUARD) {
         holdForTranscript(v);
@@ -1403,7 +1471,7 @@
         lastCalibration = ctx.currentTime;
         look.sync.calibrate(ctx.currentTime);
       }
-    } else if (settings.lookahead && port && state.engine === 'ready' && performance.now() - lastUpgradeTry > 5000) {
+    } else if (!lookaheadBlocked(v) && port && state.engine === 'ready' && performance.now() - lastUpgradeTry > 5000) {
       // Started in delay mode (e.g. the model was still loading): switch once,
       // by seeking the real playhead back to the picture on screen so nothing
       // is skipped; the seek then holds until the transcript is ready.
@@ -1424,6 +1492,15 @@
         engine: state.engine,
         device: state.device,
         mode,
+        fallbackReason,
+        badge: lastBadgeText,
+        connLog,
+        heard: state.lastText || '', // last delay-mode transcript text
+        passMs: state.processingMs ? Math.round(state.processingMs) : null,
+        live: v ? isLive(v) : null,
+        protected: v ? !!v.mediaKeys : null,
+        rate: v ? v.playbackRate : null,
+        hidden: document.hidden,
         holding: !!holding,
         delay: currentDelay,
         playhead: v ? +v.currentTime.toFixed(2) : null,
@@ -1474,13 +1551,14 @@
     }
     if (holding) return { text: 'Clean Ears: reading ahead…' };
     if (mode === 'lookahead') return { text: `Clean Ears on · no delay · ${state.caught} filtered` };
+    const why = fallbackReason ? ` (${fallbackReason})` : '';
     if (ctx && ctx.currentTime < flushUntil && anyPlaying()) {
       return { text: `Clean Ears: checking ahead (${currentDelay.toFixed(1)} s)…` };
     }
     if (state.headroom != null && state.headroom < 0.25) {
       return { text: 'Clean Ears is falling behind – raise the delay or pick a smaller model', warn: true };
     }
-    return { text: `Clean Ears on · ${state.caught} filtered` };
+    return { text: `Clean Ears on · ${currentDelay.toFixed(1)} s delay${why} · ${state.caught} filtered` };
   }
 
   let lastBadgeText = '';
@@ -1524,6 +1602,7 @@
       delay: currentDelay,
       autoDelay: settings.autoDelay,
       mode,
+      fallbackReason,
       measuredNeed: measuredNeed(),
       wordsMeasured: needs.length,
     });

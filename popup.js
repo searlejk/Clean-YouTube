@@ -122,7 +122,7 @@ async function pollStatus() {
     $('delay-value').textContent = 'None · reading ahead';
   } else if (st.autoDelay && st.delay) {
     liveDelay = st.delay;
-    $('delay-value').textContent = `Auto · ${st.delay.toFixed(1)} s`;
+    $('delay-value').textContent = `Auto · ${st.delay.toFixed(1)} s` + (st.fallbackReason ? ` (${st.fallbackReason})` : '');
   }
   if (!st.enabled) return setStatus('', 'Filter is off');
   if (!st.videos) return setStatus('', 'Waiting for a video…');
