@@ -71,7 +71,7 @@
   let staleBefore = 0;
 
   let settings = { ...PF.DEFAULTS };
-  let compiled = PFFilter.compileWordList(settings.words);
+  let compiled = PFFilter.compileWordList(settings.words, settings.allow);
 
   const state = {
     asrSource: {}, // companion windows transcribed from the voice stem vs the full mix
@@ -91,7 +91,7 @@
 
   chrome.storage.sync.get(PF.DEFAULTS).then((s) => {
     settings = s;
-    compiled = PFFilter.compileWordList(settings.words);
+    compiled = PFFilter.compileWordList(settings.words, settings.allow);
     applySettings(true);
   });
 
@@ -101,8 +101,8 @@
     for (const [k, { newValue }] of Object.entries(changes)) {
       settings[k] = newValue === undefined ? PF.DEFAULTS[k] : newValue;
     }
-    if (changes.words) {
-      compiled = PFFilter.compileWordList(settings.words);
+    if (changes.words || changes.allow) {
+      compiled = PFFilter.compileWordList(settings.words, settings.allow);
       sendKwsWords();
     }
     if (changes.model) {
@@ -538,7 +538,7 @@
       msg.words = msg.words.map((w) => (w.aligned ? w : { ...w, start: w.start - l.start, end: w.end - l.end }));
       lag = NO_LAG;
     }
-    for (const m of [...PFFilter.findMatches(msg.words, compiled), ...spottedMatches(msg.spotted, -Infinity, Infinity)]) {
+    for (const m of [...PFFilter.findMatches(msg.words, compiled), ...spottedMatches(msg.spotted, -Infinity, Infinity, msg.words)]) {
       const pad = coverFor(m);
       const s = timeOf(m.start - lag.start - pad.before);
       const e = timeOf(m.end - lag.end + pad.after);
@@ -583,8 +583,13 @@
   function addInterval(s, e, match) {
     const now = ctx.currentTime;
     history = history.filter((h) => h.e > now - 15);
-    const seen = history.some((h) => h.s < e && s < h.e);
-    history.push({ s, e });
+    const by = match.spotted ? 'spotter' : 'list';
+    const prior = history.find((h) => h.s < e && s < h.e);
+    const seen = !!prior;
+    // Caught by both detectors (step 7.2: "extra sure"): mark it in the popup.
+    if (prior?.recent && prior.recent.by !== by && prior.recent.by !== 'both') prior.recent.by = 'both';
+    const entry = { s, e, recent: null };
+    history.push(entry);
 
     if (e <= now) {
       if (!seen) {
@@ -603,7 +608,8 @@
       }
       state.caught++;
       reportBlocked();
-      state.recent.unshift({ word: match.text, rule: match.rule, late: s < now, at: Date.now() });
+      entry.recent = { word: match.text, rule: match.rule, by, score: match.score, late: s < now, at: Date.now() };
+      state.recent.unshift(entry.recent);
       state.recent.length = Math.min(state.recent.length, 10);
     }
     intervals.push({ s, e });
@@ -1471,9 +1477,13 @@
     if (look.spotted.length > 500) look.spotted.splice(0, look.spotted.length - 500);
   }
 
-  function spottedMatches(hits, t0, t1) {
+  // `words`: the transcript around these hits, so hits inside an allowed
+  // phrase ("Moby Dick") are dropped like word-list matches are.
+  function spottedMatches(hits, t0, t1, words) {
+    const allowed = words && compiled.allow ? PFFilter.findAllowed(words, compiled) : [];
     return (hits || [])
       .filter((h) => h.start >= t0 && h.start < t1)
+      .filter((h) => !allowed.some((a) => h.start < a.end && a.start < h.end))
       .map((h) => ({ start: h.start, end: h.end, text: h.word.replace(/\*/g, ''), rule: `${h.word} (heard by the spotter)`, aligned: true, spotted: true, score: h.score }));
   }
 
@@ -1623,7 +1633,7 @@
     const look = lookFor(video);
     if (!look || !ctx) return;
     const t = video.currentTime;
-    for (const m of [...PFFilter.findMatches(look.words.between(t - 3, t + 1), compiled), ...spottedMatches(look.spotted, t - 3, t + 1)]) {
+    for (const m of [...PFFilter.findMatches(look.words.between(t - 3, t + 1), compiled), ...spottedMatches(look.spotted, t - 3, t + 1, look.words.between(t - 4, t + 2))]) {
       const pad = coverFor(m); // lookahead words are already in true time
       const m0 = m.start - pad.before;
       const m1 = m.end + pad.after;
@@ -1659,7 +1669,7 @@
   // Turn upcoming swears in the transcript into mutes, timed by ClockSync.
   function scheduleLookaheadMutes(video, look) {
     const t = video.currentTime;
-    for (const m of [...PFFilter.findMatches(look.words.between(t - 2, t + SCHEDULE_AHEAD), compiled), ...spottedMatches(look.spotted, t - 2, t + SCHEDULE_AHEAD)]) {
+    for (const m of [...PFFilter.findMatches(look.words.between(t - 2, t + SCHEDULE_AHEAD), compiled), ...spottedMatches(look.spotted, t - 2, t + SCHEDULE_AHEAD, look.words.between(t - 3, t + SCHEDULE_AHEAD + 1))]) {
       const key = Math.round(m.start * 100) + ':' + m.text;
       if (look.scheduled.has(key)) continue;
       const pad = coverFor(m); // lookahead words are already in true time

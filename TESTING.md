@@ -9,6 +9,18 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.13.0 · roadmap steps 6–7 (swear spotter, allow-list)
+
+- [ ] **Never filter.** The popup has a "Never filter" box with names like
+      Moby Dick. On a video that says "Moby Dick", it isn't muted; a plain
+      "dick" still is.
+- [ ] **Who caught it.** Hover a word in the popup's caught list: the
+      tooltip says whether Whisper, the swear spotter, or both caught it
+      (both shows ✓✓).
+- [ ] **Spotter catches more.** With the companion running, swears that
+      Whisper mishears are still muted. Note any video where a normal word
+      gets muted that shouldn't (a spotter false alarm) and what the word was.
+
 ## Version 1.12.0 · roadmap step 5.3 (tighter word cover)
 
 - [ ] **Less cut around swears.** With the companion running, the words

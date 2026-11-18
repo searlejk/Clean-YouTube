@@ -130,6 +130,65 @@ class KeywordSpotter:
         hits.sort(key=lambda h: h["start"])
         return hits
 
+    def _letters(self, text):
+        return np.array([self.vocab[c] for c in re.sub(r"[^A-Z']", "", text.upper()) if c in self.vocab], np.int64)
+
+    @staticmethod
+    def _forced(em, tokens, start_free=False, end_free=False):
+        """Log-prob of the best path that spells `tokens` across all of `em`
+        (letters held or separated by blanks). A free start/end lets the
+        spelling begin later or finish earlier, the rest of the frames being
+        read as their single most likely letter (a prefix such as shit* in
+        "shitty")."""
+        T, N = em.shape[0], len(tokens)
+        if N == 0 or T < N:
+            return -np.inf
+        best = em.max(axis=1)
+        tok = em[:, tokens]
+        stay = np.maximum(em[:, BLANK][:, None], tok)
+        dp = np.full(N, -np.inf, np.float32)
+        lead = 0.0  # frames before the spelling starts (free start)
+        out = -np.inf
+        tail = np.concatenate((np.cumsum(best[::-1])[::-1], [0.0]))  # best reading of frames t..T-1
+        for t in range(T):
+            enter = np.empty(N, np.float32)
+            enter[0] = (lead if start_free or t == 0 else -np.inf) + tok[t, 0]
+            enter[1:] = dp[:-1] + tok[t, 1:]
+            dp = np.maximum(dp + stay[t], enter)
+            lead += best[t] if start_free else em[t, BLANK]
+            if end_free:
+                out = max(out, dp[-1] + tail[t + 1])
+        return out if end_free else dp[-1]
+
+    def rescore(self, em, frame_s, offset, words, margin=2):
+        """Re-check each word Whisper heard (aligned, step 5.2): does a
+        word-list spelling explain its stretch of audio better than the word
+        Whisper wrote? Returns hits like find(), score = gain per frame of the
+        swear over Whisper's word (> 0: the swear fits better)."""
+        hits = []
+        T = em.shape[0]
+        for w in words:
+            if not w.get("aligned"):
+                continue
+            a = max(0, int((w["start"] - offset) / frame_s) - margin)
+            b = min(T, int(np.ceil((w["end"] - offset) / frame_s)) + margin)
+            if b - a < 3:
+                continue
+            seg = em[a:b]
+            heard = self._letters(w["text"])
+            base = self._forced(seg, heard, True, True) if len(heard) else seg.max(axis=1).sum()
+            best = None
+            for pat in self.patterns:
+                if SEP in pat["tokens"]:
+                    continue  # phrases are left to the word list
+                sc = self._forced(seg, pat["tokens"], not pat["start_bound"], not pat["end_bound"])
+                gain = (sc - base) / (b - a)
+                if best is None or gain > best[0]:
+                    best = (gain, pat)
+            if best and best[0] > self.threshold:
+                hits.append({"word": best[1]["word"], "start": round(w["start"], 3), "end": round(w["end"], 3), "score": round(float(best[0]), 3), "heard": w["text"].strip()})
+        return hits
+
     def best_scores(self, em):
         """Best confidence per pattern in the window (for tuning)."""
         best = em.max(axis=1)

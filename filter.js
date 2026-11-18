@@ -36,8 +36,16 @@
   }
 
   // Entries with spaces become phrases ("son of a bitch"); everything else is
-  // a single-word pattern where * is a wildcard.
-  function compileWordList(list) {
+  // a single-word pattern where * is a wildcard. `allow` (roadmap step 7.4)
+  // is compiled the same way: words inside an allowed phrase ("Dick Van
+  // Dyke") are never filtered.
+  function compileWordList(list, allow) {
+    const compiled = compileEntries(list);
+    compiled.allow = allow && allow.length ? compileEntries(allow) : null;
+    return compiled;
+  }
+
+  function compileEntries(list) {
     const singles = [];
     const phrases = [];
     for (const raw of list || []) {
@@ -94,9 +102,43 @@
       }
     }
 
-    return out.sort((a, b) => a.start - b.start);
+    // Drop anything that sits inside an allowed phrase.
+    const allowed = allowedIndices(words, norm, compiled.allow);
+    const kept = allowed.size ? out.filter((m) => !rangeAllowed(words, m, allowed)) : out;
+    return kept.sort((a, b) => a.start - b.start);
   }
 
-  root.PFFilter = { normalizeToken, patternToRegex, compileWordList, findMatches };
+  function allowedIndices(words, norm, allow) {
+    const idx = new Set();
+    if (!allow) return idx;
+    for (let i = 0; i < words.length; i++) if (norm[i].length && allow.singles.some((s) => tokenMatches(norm[i], s.re))) idx.add(i);
+    for (const phrase of allow.phrases) {
+      const n = phrase.res.length;
+      for (let i = 0; i + n <= words.length; i++) {
+        let ok = true;
+        for (let k = 0; k < n && ok; k++) ok = tokenMatches(norm[i + k], phrase.res[k]);
+        if (ok) for (let k = 0; k < n; k++) idx.add(i + k);
+      }
+    }
+    return idx;
+  }
+
+  function rangeAllowed(words, m, allowed) {
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].start >= m.start - 1e-6 && words[i].end <= m.end + 1e-6 && !allowed.has(i)) return false;
+    }
+    return true;
+  }
+
+  // Time spans of allowed phrases in `words`, so hits from other detectors
+  // (the swear spotter) can be dropped there too.
+  function findAllowed(words, compiled) {
+    if (!compiled.allow) return [];
+    const norm = words.map((w) => normalizeToken(w.text));
+    const idx = [...allowedIndices(words, norm, compiled.allow)].sort((a, b) => a - b);
+    return idx.map((i) => ({ start: words[i].start, end: words[i].end }));
+  }
+
+  root.PFFilter = { normalizeToken, patternToRegex, compileWordList, findMatches, findAllowed };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.PFFilter;
 })(typeof globalThis !== 'undefined' ? globalThis : self);

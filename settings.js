@@ -35,6 +35,9 @@
     'son of a bitch',
   ];
 
+  // Names and phrases that contain a listed word but aren't swearing.
+  const DEFAULT_ALLOW = ['Dick Van Dyke', 'Moby Dick', 'Dick Tracy', 'Philip K Dick', 'Dick Cheney', 'cock a doodle doo'];
+
   const MODELS = {
     'tiny.en': {
       id: 'onnx-community/whisper-tiny.en_timestamped',
@@ -65,6 +68,7 @@
     cover: 0.25, // extra seconds muted before and after each caught word
     showBadge: true,
     muteUntilReady: false, // keep the sound off until the model has loaded
+    allow: DEFAULT_ALLOW, // phrases never filtered (roadmap step 7.4)
   };
 
   // Bumped when stored settings need a one-time migration (see background.js).
@@ -80,5 +84,5 @@
 
   const SETTINGS_VERSION = 2;
 
-  root.PF = { DEFAULTS, DEFAULT_WORDS, MODELS, COMPANION_MODELS, SETTINGS_VERSION };
+  root.PF = { DEFAULTS, DEFAULT_WORDS, DEFAULT_ALLOW, MODELS, COMPANION_MODELS, SETTINGS_VERSION };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

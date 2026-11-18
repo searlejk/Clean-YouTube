@@ -433,19 +433,52 @@ extension sends it to a local companion app that runs the heavy models.
 
 ## 6. Keyword-spotting model (swear words)
 
-- [ ] 6.1 Build a labelled dataset: swear-word clips plus near-miss words
+- [x] 6.1 Build a labelled dataset: swear-word clips plus near-miss words
       ("ship", "duck", "witch"), from many voices.
-- [ ] 6.2 Train a small model (log-mel + small CNN/CRNN), export to ONNX.
-- [ ] 6.3 Run it on the vocal stem in parallel with ASR.
-      *Done when:* recall ≥ 95% on the test set, with a measured false-positive
-      rate.
+      *Result:* [companion/tests/kws_dataset.py](companion/tests/kws_dataset.py):
+      every default-list swear and 40 look-alikes in carrier sentences, 26
+      macOS voices, 1,662 clips (13 voices for tuning, 13 held back). Synthetic
+      voices sometimes mispronounce ("whore" like "her"); one voice refuses
+      "shit". Real recordings would make a better set.
+- [~] 6.2 Train a small model (log-mel + small CNN/CRNN), export to ONNX.
+      *Tried a no-training alternative instead:* CTC keyword spotting on the
+      wav2vec2 letter probabilities already computed for alignment
+      ([companion/kws.py](companion/kws.py)), patterns taken from the word list
+      with their word edges. Two ways, measured with Whisper small
+      ([companion/tests/kws_eval.py](companion/tests/kws_eval.py)):
+      searching whole sentences caught 95% of tuning swears only while also
+      firing on 72–83% of look-alike sentences; re-checking each word Whisper
+      heard against the list raised recall from 76.9% to 79.8–82.7% but
+      false alarms from 6.9% to 10–15%, about one false alarm per extra catch.
+      Whisper's own misses are mostly rarer words heard as ordinary ones
+      ("whore"→"her", "prick"→"pretty", "cunt"→"Kant"); its false alarms are
+      mostly true sound-alikes ("dam"→"damn"). A trained model on real speech
+      (needs PyTorch and real recordings) is still the open option.
+- [~] 6.3 Run it on the vocal stem in parallel with ASR.
+      *Built, off by default:* the companion re-checks each aligned word in
+      the same wav2vec2 pass when started with `--spot-swears`; the extension
+      sends it the word list. *Done when* (recall ≥ 95% with a measured
+      false-positive rate) **not met**: best measured trade-off above.
 
 ## 7. Profanity decision (word list + KWS score)
 
 - [x] 7.1 Word list with wildcards, phrases, pre-censored forms
-- [ ] 7.2 Combine: cut if either detector is confident; extra-sure if both
-- [ ] 7.3 Per-word confidence shown in the popup's "recently caught" list
-- [ ] 7.4 Allow-list for false positives (e.g. "Dick Van Dyke")
+- [x] 7.2 Combine: cut if either detector is confident; extra-sure if both
+      *Result (v1.13.0):* the extension mutes a swear if Whisper + the word
+      list or the spotter catches it (read-ahead and live-stream paths); a
+      word both catch counts once and is marked as caught by both. With the
+      spotter off by default, only the word list acts.
+- [x] 7.3 Per-word confidence shown in the popup's "recently caught" list
+      *Result (v1.13.0):* each caught word's tooltip says which detector
+      caught it (Whisper + your word list, the swear spotter, or both); words
+      caught by both are marked ✓✓.
+- [x] 7.4 Allow-list for false positives (e.g. "Dick Van Dyke")
+      *Result (v1.13.0):* a "Never filter" box in the popup (defaults: Dick Van
+      Dyke, Moby Dick, Dick Tracy, Philip K Dick, Dick Cheney, cock a doodle
+      doo). Word-list matches inside an allowed phrase are dropped, and so are
+      spotter hits that fall in its time span. Checked: "Moby Dick" and "Dick
+      Van Dyke" pass; "what a dick" and a later "dick" in the same sentence
+      are still caught.
 
 ## 8. Diarization (who's speaking)
 

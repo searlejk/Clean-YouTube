@@ -39,6 +39,7 @@ from websockets.datastructures import Headers
 from stems import StemStore, resample
 
 ASR_INPUT = "vocals"  # "vocals": transcribe the separated voice stem when ready (step 4.3); "mix": never
+SPOT_THRESHOLD = 0.3  # swear spotter: gain per frame a swear must have over Whisper's word (tests/kws_eval.py)
 STEM_WAIT_S = 1.0  # shortest wait for a window's stretch to be separated
 STEM_WAIT_FAR_S = 8.0  # longest
 SAFE_MARGIN_S = 7.0  # a window waits at most (seconds until it plays) - this
@@ -79,6 +80,7 @@ class Engine:
         self.stems = None  # StemStore once the separation model is loaded
         self.aligner = None  # forced alignment of word timings (step 5.2)
         self.spotter = None  # swear spotting from the same letter probabilities (step 6)
+        self.use_spotter = False  # off by default: measured too many false alarms (see ROADMAP 6)
         self.use_align = True
         self.stem_owners = {}  # stream -> send function of the tab's connection
         self.served = 0  # windows since the last stats line
@@ -110,10 +112,11 @@ class Engine:
                 al = Aligner()
                 al.emissions(np.zeros(SR, np.float32))  # warm-up
                 self.aligner = al
-                from kws import KeywordSpotter
+                if self.use_spotter:
+                    from kws import KeywordSpotter
 
-                self.spotter = KeywordSpotter(al.vocab)
-                log.info("word alignment and swear spotting ready (wav2vec2, %s)", al.provider)
+                    self.spotter = KeywordSpotter(al.vocab, threshold=SPOT_THRESHOLD)
+                log.info("word alignment ready (wav2vec2, %s)%s", al.provider, "; swear spotter on (experimental)" if self.spotter else "")
             except Exception as e:
                 log.warning("word alignment off: %s", e)
         try:
@@ -146,8 +149,9 @@ class Engine:
                 em = self.aligner.emissions(samples)
                 if words:
                     words = self.aligner.align(samples, offset, words, em=em)
-                if self.spotter is not None and self.spotter.patterns:
-                    hits = self.spotter.find(em, len(samples) / SR / em.shape[0], offset)
+                if self.spotter is not None and self.spotter.patterns and words:
+                    # Re-check each word Whisper heard against the word list.
+                    hits = self.spotter.rescore(em, len(samples) / SR / em.shape[0], offset, words)
             except Exception as e:
                 log.warning("alignment/spotting failed: %s", e)
         self.last_hits = hits
@@ -477,6 +481,7 @@ async def main():
     p.add_argument("--check", action="store_true", help="download the model, time one pass, and exit")
     p.add_argument("--asr-input", default=ASR_INPUT, choices=["vocals", "mix"], help="transcribe the separated voice (default) or the full mix")
     p.add_argument("--no-align", action="store_true", help="use Whisper's own word times instead of forced alignment")
+    p.add_argument("--spot-swears", action="store_true", help="experimental: also mute words the swear spotter thinks are swears (more false alarms)")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if os.environ.get("CLEAN_EARS_DEBUG") else logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
@@ -493,6 +498,7 @@ async def main():
 
     engine = Engine(args.model, args.device)
     engine.use_align = not args.no_align
+    engine.use_spotter = args.spot_swears
     asyncio.create_task(engine.load())
     asyncio.create_task(engine.report())
     asyncio.create_task(engine.separate_forever())

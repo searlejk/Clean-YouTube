@@ -50,6 +50,8 @@ class Aligner:
 
     def emissions(self, samples):
         x = np.asarray(samples, np.float32)
+        if len(x) < SR // 10:  # the model's convolutions need ~0.1 s at least
+            x = np.pad(x, (0, SR // 10 - len(x)))
         x = (x - x.mean()) / np.sqrt(x.var() + 1e-7)  # the model's normalization
         logits = self.session.run(None, {"input_values": x[None, :]})[0][0]
         return _log_softmax(logits.astype(np.float32))

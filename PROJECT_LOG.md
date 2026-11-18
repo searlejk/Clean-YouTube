@@ -19,4 +19,5 @@
 | 11/18/2026 | Roadmap step 5.1: voice activity detection in the companion and pause-aware windows in the extension; measured against fixed windows with the real transcriber (no gain, so left off) | 0.5 |
 | 11/18/2026 | Roadmap step 5.2: forced alignment of word timings in the companion (wav2vec2, the WhisperX approach); word starts within ±50 ms for 98% of words with every Whisper size, up from 2–32% | 0.2 |
 | 11/18/2026 | Roadmap step 5.3: tighter silence around aligned words (60 ms before / 100 ms after instead of 0.25 s each side); every test word still fully silenced, and about 0.16 s muted around each word instead of ~0.8 s | 0.3 |
-| **Total** | | **11.4** |
+| 11/18/2026 | Roadmap steps 6–7: built a 1,662-clip swear/look-alike test set (26 voices) and a swear spotter from the alignment model; measured it against Whisper (not accurate enough, so off by default); combined detectors, "never filter" allow-list, and which-detector-caught-it in the popup | 0.6 |
+| **Total** | | **12.0** |

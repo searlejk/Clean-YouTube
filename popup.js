@@ -38,6 +38,7 @@ function render(s) {
   $('cover-value').textContent = `${Number(s.cover).toFixed(2)} s`;
   $('model').value = s.model;
   if (document.activeElement !== $('words')) $('words').value = s.words.join('\n');
+  if (document.activeElement !== $('allow')) $('allow').value = (s.allow || []).join('\n');
   $('muteUntilReady').checked = s.muteUntilReady;
   $('showBadge').checked = s.showBadge;
 }
@@ -75,6 +76,10 @@ async function init() {
   $('words').addEventListener(
     'input',
     debounce((e) => save({ words: parseWords(e.target.value) }), 400)
+  );
+  $('allow').addEventListener(
+    'input',
+    debounce((e) => save({ allow: parseWords(e.target.value) }), 400)
   );
   $('reset-words').addEventListener('click', () => {
     $('words').value = PF.DEFAULT_WORDS.join('\n');
@@ -224,8 +229,9 @@ async function pollStatus() {
 
   for (const r of st.recent.slice(0, 8)) {
     const li = document.createElement('li');
-    li.textContent = mask(r.word);
-    li.title = `Matched “${r.rule}”` + (r.late ? ' (partly late)' : '');
+    li.textContent = mask(r.word) + (r.by === 'both' ? ' ✓✓' : '');
+    const by = r.by === 'both' ? 'Whisper and the swear spotter' : r.by === 'spotter' ? 'the swear spotter (Whisper heard something else)' : 'Whisper + your word list';
+    li.title = `Caught by ${by}; matched “${r.rule}”` + (r.late ? ' (partly late)' : '');
     if (r.late) li.classList.add('late');
     recent.appendChild(li);
   }
