@@ -13,7 +13,14 @@
 //     transcribe,               // async (samples, offsetSec) => { words: [{text,start,end}] } in media time
 //     playhead: () => video.currentTime,
 //     duration: () => video.duration,
+//     speech: (t0, t1) => [[a, b], ...] | null,   // optional (step 5.1): where there's
+//                               // speech in [t0, t1), or null if unknown there
 //   });
+//
+// With `speech`, a window ends in the pause nearest `windowSec` (between
+// minWindowSec and windowSec + stretchSec) instead of wherever 10 s falls, so
+// no word is cut in half, and a stretch with no speech is skipped without
+// calling Whisper.
 //   lt.start(); ... lt.stop();
 (function (root) {
   const SR = 16000;
@@ -31,11 +38,14 @@
       urgentSec = 4,
       silenceRms = 0.003,
       idleMs = 100, // how long to wait when there's nothing to do yet
+      speech = null,
+      minWindowSec = 5,
+      stretchSec = 2,
       onWindow = () => {},
     }) {
-      Object.assign(this, { timeline, words, transcribe, playhead, duration, windowSec, overlapSec, maxAheadSec, urgentSec, silenceRms, idleMs, onWindow });
+      Object.assign(this, { timeline, words, transcribe, playhead, duration, windowSec, overlapSec, maxAheadSec, urgentSec, silenceRms, idleMs, speech, minWindowSec, stretchSec, onWindow });
       this.running = false;
-      this.stats = { windows: 0, silentWindows: 0, whisperMs: 0, audioSec: 0, errors: 0 };
+      this.stats = { windows: 0, silentWindows: 0, whisperMs: 0, audioSec: 0, errors: 0, pauseCuts: 0, fixedCuts: 0, skippedNoSpeech: 0 };
     }
 
     start() {
@@ -71,10 +81,50 @@
       else return null; // wait for more audio
       if (len < 0.2) return null;
 
+      // Voice activity (step 5.1): end in a pause, or skip a speechless stretch.
+      let cut = 'fixed';
+      let noSpeech = false;
+      const usable = Math.min(toEnd, ready - (ready >= toEnd - 0.05 ? 0 : this.overlapSec));
+      const reach = Math.min(usable, this.windowSec + this.stretchSec);
+      const segs = this.speech && reach >= this.minWindowSec ? this.speech(from, from + reach) : null;
+      if (segs) {
+        const inWin = segs.filter((s) => s[1] > from && s[0] < from + reach);
+        if (!inWin.length || inWin[0][0] >= from + Math.min(len, reach)) {
+          // Nothing said until the next speech (or the end of what's known).
+          const until = inWin.length ? inWin[0][0] - 0.05 : from + Math.min(len, reach);
+          if (until - from >= 0.2) {
+            len = until - from;
+            noSpeech = true;
+            cut = 'pause';
+          }
+        } else {
+          let best = null;
+          for (let i = 0; i <= inWin.length; i++) {
+            const g0 = i === 0 ? null : inWin[i - 1][1];
+            const g1 = i === inWin.length ? null : inWin[i][0];
+            if (g0 == null || g1 == null) continue;
+            const mid = (g0 + g1) / 2;
+            const l = mid - from;
+            if (l < this.minWindowSec || l > reach) continue;
+            if (!best || Math.abs(l - this.windowSec) < Math.abs(best - this.windowSec)) best = l;
+          }
+          // Speech that ends inside the known stretch is a pause too.
+          const lastEnd = inWin[inWin.length - 1][1];
+          if (lastEnd + 0.1 < from + reach && lastEnd - from >= this.minWindowSec) {
+            const l = Math.min(reach, lastEnd - from + 0.1);
+            if (!best || Math.abs(l - this.windowSec) < Math.abs(best - this.windowSec)) best = l;
+          }
+          if (best != null) {
+            len = best;
+            cut = 'pause';
+          }
+        }
+      }
+
       const atEnd = from + len >= end - 0.05;
       const left = fresh ? 0 : Math.min(this.overlapSec, from); // context before
       const right = atEnd ? 0 : Math.min(this.overlapSec, Math.max(0, ready - len));
-      return { from, to: from + len, audioFrom: from - left, audioTo: from + len + right };
+      return { from, to: from + len, audioFrom: from - left, audioTo: from + len + right, cut, noSpeech };
     }
 
     async loop(generation) {
@@ -90,7 +140,12 @@
         rms = Math.sqrt(rms / (samples.length || 1));
 
         const t0 = performance.now();
-        if (rms < this.silenceRms) {
+        if (job.cut === 'pause') this.stats.pauseCuts++;
+        else this.stats.fixedCuts++;
+        if (job.noSpeech) {
+          this.words.addWindow(job.from, job.to, []);
+          this.stats.skippedNoSpeech++;
+        } else if (rms < this.silenceRms) {
           this.words.addWindow(job.from, job.to, []);
           this.stats.silentWindows++;
         } else {

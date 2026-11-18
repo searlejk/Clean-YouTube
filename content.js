@@ -474,7 +474,10 @@
     }
     if (msg.type === 'stems') {
       const look = looks.get(msg.stream);
-      if (look) look.stems = msg.ranges || [];
+      if (look) {
+        look.stems = msg.ranges || [];
+        look.speech = msg.speech || [];
+      }
       return;
     }
     if (msg.type === 'companion') {
@@ -1261,6 +1264,8 @@
 
   // Lookahead can run on the companion app even while the in-browser model
   // is still loading.
+  const PAUSE_CUTS = false; // roadmap step 5.1, see createLook()
+
   // ───── stem clips for the mixer (roadmap step 4.4) ─────
   // For each upcoming swear, the companion's separated background (music and
   // effects without the voice) for that stretch, fetched a few seconds ahead
@@ -1391,6 +1396,14 @@
       timeline,
       words,
       transcribe: (samples, offset) => requestTranscribe(samples, offset, src),
+      // Where the companion's voice detector heard speech (step 5.1), for
+      // stretches it has separated; null elsewhere. Off: cutting windows at
+      // pauses measured slightly worse than fixed 10 s windows with 1 s of
+      // overlap (7.9% vs 6.1% word errors on the 10 test mixes).
+      speech: !PAUSE_CUTS ? null : (t0, t1) => {
+        if (!look.stems || !look.stems.some(([a, b]) => a <= t0 + 0.05 && t1 <= b + 0.05)) return null;
+        return (look.speech || []).filter(([a, b]) => b > t0 && a < t1);
+      },
       playhead: () => videoForSrc(src)?.currentTime ?? null,
       duration: () => {
         const v = videoForSrc(src);

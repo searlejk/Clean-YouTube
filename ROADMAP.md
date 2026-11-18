@@ -379,8 +379,21 @@ extension sends it to a local companion app that runs the heavy models.
 
 ## 5. WhisperX ASR + Silero VAD → alignment (word timings)
 
-- [ ] 5.1 Silero VAD (ONNX) to skip silence and cut audio at pauses rather
+- [~] 5.1 Silero VAD (ONNX) to skip silence and cut audio at pauses rather
       than mid-word.
+      *Built and measured; pause cuts left off.* The companion runs Silero
+      VAD (bundled with faster-whisper) on each separated voice block and
+      reports speech stretches with the stems; on the exact-timing test
+      speech none of its 14 pauses fell inside a word. The transcriber can end
+      each window in the pause nearest 10 s (5–12 s) and skip stretches with
+      no speech (`speech` option, `PAUSE_CUTS` in content.js). Measured with
+      the real JS transcriber against the companion on the 10 music mixes
+      ([companion/tests/vad_windowing_eval.js](companion/tests/vad_windowing_eval.js)):
+      fixed 10 s windows with 1 s overlap 6.1% word errors, 27/28 swears;
+      pause cuts 7.9%, 26/28, and slightly more Whisper work (no silent
+      stretches to skip in these clips). The overlap already protects words
+      at window edges, so pause cuts stay off. Worth re-testing on real
+      videos with long silences, where skipping could save work.
 - [ ] 5.2 Forced alignment with a wav2vec2 CTC model (the WhisperX approach)
       to replace the hand-measured timestamp lag.
       *Done when:* word starts land within ±50 ms on the waveform-labelled

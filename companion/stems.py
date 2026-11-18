@@ -13,6 +13,8 @@ edges don't sound different, and the stems are stored by media time.
     job, run = store.next_job()             # job(): does the work (any thread); None if idle
     store.finish(job())                     # back on the main thread
     store.ranges(stream)                    # [[from, to], ...] media seconds ready
+    store.speech(stream)                    # [[from, to], ...] where the separated voice has speech
+                                            # (Silero VAD, step 5.1); pauses are the gaps inside ranges()
     store.get(stream, t0, t1)               # (vocals, background) [2, n] at 48 kHz, or None
     store.clip(stream, t0, t1)              # (start, rate, vocals, background): start is the exact
                                             # media time of sample 0 (t0 snapped to a sample)
@@ -23,6 +25,15 @@ import time
 import numpy as np
 
 from separation import SR as MODEL_SR
+
+# Silero VAD (bundled with faster-whisper) on the separated voice, tuned to
+# find the short pauses between phrases, not just long silences.
+try:
+    from faster_whisper.vad import VadOptions, get_speech_timestamps
+
+    VAD = VadOptions(threshold=0.5, min_silence_duration_ms=120, speech_pad_ms=30)
+except Exception:  # pragma: no cover
+    get_speech_timestamps = None
 
 BLOCK_S = 10.4  # seconds of output per block (two model chunks with the context)
 CONTEXT_S = 0.5  # real audio on each side of a block, discarded after
@@ -57,6 +68,7 @@ class Run:
         self.total = 0  # samples received
         self.done = 0  # samples separated
         self.blocks = []  # (start_s, end_s, vocals f16 [2,n], background f16 [2,n])
+        self.speech = []  # [start_s, end_s] speech in the separated voice
         self.updated = time.monotonic()
         self.busy = False
 
@@ -90,8 +102,15 @@ class Run:
     def segment(self, a, b):
         return self.raw[:, a - self.raw_offset : b - self.raw_offset].copy()
 
-    def finish(self, out_from, out_to, vocals, background):
+    def finish(self, out_from, out_to, vocals, background, speech=()):
         self.blocks.append((self.start + out_from / self.rate, self.start + out_to / self.rate, vocals.astype(np.float16), background.astype(np.float16)))
+        t0 = self.start + out_from / self.rate
+        for a, b in speech:
+            a, b = t0 + a, t0 + b
+            if self.speech and a - self.speech[-1][1] < 0.05:  # continues over the block edge
+                self.speech[-1][1] = max(self.speech[-1][1], b)
+            else:
+                self.speech.append([a, b])
         self.done = out_to
         # Keep only what the next block needs as left context.
         keep_from = max(self.raw_offset, self.done - int(CONTEXT_S * self.rate))
@@ -124,6 +143,7 @@ class StemStore:
         st["playhead"] = t
         for run in st["runs"]:
             run.blocks = [b for b in run.blocks if b[1] >= t - KEEP_BEHIND_S]
+            run.speech = [s for s in run.speech if s[1] >= t - KEEP_BEHIND_S]
         st["runs"] = [r for r in st["runs"] if r.blocks or r.end_time() >= t - KEEP_BEHIND_S]
 
     def close(self, stream):
@@ -159,16 +179,20 @@ class StemStore:
             vocals = resample(vocals, n)
             background = seg - vocals  # exact: vocals + background == the original audio
             a, b = out_a - seg_a, out_b - seg_a
+            speech = []
+            if get_speech_timestamps is not None:
+                v16 = resample(vocals[:, a:b].mean(axis=0, keepdims=True), max(1, round((b - a) * 16000 / run.rate)))[0]
+                speech = [(s["start"] / 16000, s["end"] / 16000) for s in get_speech_timestamps(v16, VAD)]
             self.stats["busy_s"] += time.perf_counter() - t0
             self.stats["blocks"] += 1
             self.stats["audio_s"] += (out_b - out_a) / run.rate
-            return stream, run, out_a, out_b, vocals[:, a:b], background[:, a:b]
+            return stream, run, out_a, out_b, vocals[:, a:b], background[:, a:b], speech
 
         return job, run
 
     def finish(self, result):
-        stream, run, out_a, out_b, vocals, background = result
-        run.finish(out_a, out_b, vocals, background)
+        stream, run, out_a, out_b, vocals, background, speech = result
+        run.finish(out_a, out_b, vocals, background, speech)
         return stream
 
     def fail(self, run):
@@ -181,6 +205,19 @@ class StemStore:
         spans = sorted((b[0], b[1]) for r in st["runs"] for b in r.blocks)
         merged = []
         for a, b in spans:
+            if merged and a <= merged[-1][1] + JOIN:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        return [[round(a, 3), round(b, 3)] for a, b in merged]
+
+    def speech(self, stream):
+        st = self.streams.get(stream)
+        if not st:
+            return []
+        segs = sorted(s for r in st["runs"] for s in r.speech)
+        merged = []
+        for a, b in segs:
             if merged and a <= merged[-1][1] + JOIN:
                 merged[-1][1] = max(merged[-1][1], b)
             else:

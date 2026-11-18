@@ -148,11 +148,21 @@ class Engine:
         """Work through pending stem blocks, nearest to each playhead first."""
         await self.loaded.wait()
         loop = asyncio.get_running_loop()
+        idle_since = None
         while True:
             job, run = self.stems.next_job() if self.stems else (None, None)
             if job is None:
+                if self.stems and log.isEnabledFor(logging.DEBUG):
+                    idle_since = idle_since or time.monotonic()
+                    if time.monotonic() - idle_since > 5:
+                        idle_since = time.monotonic()
+                        for name, st in self.stems.streams.items():
+                            for r in st["runs"]:
+                                log.debug("idle: %s run %.2f s: received %.2f s, separated %.2f s, busy %s", name, r.start, r.total / r.rate, r.done / r.rate, r.busy)
                 await asyncio.sleep(0.05)
                 continue
+            idle_since = None
+            log.debug("separating %s run %.2f: from %.2f s", "?", run.start, run.done / run.rate)
             try:
                 stream = self.stems.finish(await loop.run_in_executor(self.sep_pool, job))
             except Exception:
@@ -164,7 +174,7 @@ class Engine:
             send = self.stem_owners.get(stream)
             if send:
                 try:
-                    await send({"type": "stems", "stream": stream, "ranges": self.stems.ranges(stream)})
+                    await send({"type": "stems", "stream": stream, "ranges": self.stems.ranges(stream), "speech": self.stems.speech(stream)})
                 except Exception:
                     pass
 
@@ -314,8 +324,8 @@ LOCAL_PAGE = ("http://127.0.0.1:", "http://localhost:")
 def make_origin_check(cfg, allow_any, allow_local_pages=False):
     def check(connection, request):
         origin = request.headers.get("Origin", "")
-        if allow_local_pages and origin.startswith(LOCAL_PAGE):
-            return None  # development: the extension's test pages
+        if allow_local_pages and (origin.startswith(LOCAL_PAGE) or not origin):
+            return None  # development: the extension's test pages and local test scripts
         if not origin.startswith("chrome-extension://"):
             log.warning("refused connection from origin %r", origin)
             return Response(403, "Forbidden", Headers([("Content-Type", "text/plain")]), b"Only the Clean Ears extension may connect.\n")
