@@ -100,11 +100,17 @@ class Aligner:
             return None
         return starts
 
-    def align(self, samples, offset, words):
+    def usable(self, samples):
+        return SR * 0.2 <= len(samples) <= SR * MAX_SECONDS
+
+    def align(self, samples, offset, words, em=None):
+        """`em`: emissions for `samples` if already computed (the keyword
+        spotter shares them)."""
         out = [dict(w, aligned=False) for w in words]
-        if not words or len(samples) < SR * 0.2 or len(samples) > SR * MAX_SECONDS:
+        if not words or not self.usable(samples):
             return out
-        em = self.emissions(samples)
+        if em is None:
+            em = self.emissions(samples)
         frame = len(samples) / SR / em.shape[0]  # ~0.02 s
         tokens, owner = self.tokens_for(words)
         starts = self.viterbi(em, tokens)

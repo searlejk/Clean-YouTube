@@ -13,3 +13,4 @@ companion/.venv/
 __pycache__/
 companion/models/
 companion/tests/music/
+companion/tests/kws_data/

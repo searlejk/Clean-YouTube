@@ -78,6 +78,7 @@ class Engine:
         self.sep_pool = ThreadPoolExecutor(max_workers=1)
         self.stems = None  # StemStore once the separation model is loaded
         self.aligner = None  # forced alignment of word timings (step 5.2)
+        self.spotter = None  # swear spotting from the same letter probabilities (step 6)
         self.use_align = True
         self.stem_owners = {}  # stream -> send function of the tab's connection
         self.served = 0  # windows since the last stats line
@@ -109,7 +110,10 @@ class Engine:
                 al = Aligner()
                 al.emissions(np.zeros(SR, np.float32))  # warm-up
                 self.aligner = al
-                log.info("word alignment ready (wav2vec2, %s)", al.provider)
+                from kws import KeywordSpotter
+
+                self.spotter = KeywordSpotter(al.vocab)
+                log.info("word alignment and swear spotting ready (wav2vec2, %s)", al.provider)
             except Exception as e:
                 log.warning("word alignment off: %s", e)
         try:
@@ -133,12 +137,20 @@ class Engine:
         self.loaded.set()
 
     def _transcribe_aligned(self, samples, offset):
+        """Whisper's words, aligned to the audio (step 5.2), plus swears the
+        keyword spotter heard (step 6), from one pass of wav2vec2."""
         words, text = self._transcribe(samples, offset)
-        if self.aligner is not None and words:
+        hits = []
+        if self.aligner is not None and self.aligner.usable(samples):
             try:
-                words = self.aligner.align(samples, offset, words)
+                em = self.aligner.emissions(samples)
+                if words:
+                    words = self.aligner.align(samples, offset, words, em=em)
+                if self.spotter is not None and self.spotter.patterns:
+                    hits = self.spotter.find(em, len(samples) / SR / em.shape[0], offset)
             except Exception as e:
-                log.warning("alignment failed: %s", e)
+                log.warning("alignment/spotting failed: %s", e)
+        self.last_hits = hits
         return words, text
 
     def _transcribe(self, samples, offset):
@@ -159,7 +171,11 @@ class Engine:
 
     async def transcribe(self, samples, offset):
         t = time.perf_counter()
-        out = await asyncio.get_running_loop().run_in_executor(self.pool, self._transcribe_aligned, samples, offset)
+        def run():
+            words, text = self._transcribe_aligned(samples, offset)
+            return words, text, self.last_hits
+
+        out = await asyncio.get_running_loop().run_in_executor(self.pool, run)
         self.served += 1
         self.audio_s += len(samples) / SR
         self.busy_s += time.perf_counter() - t
@@ -254,9 +270,9 @@ async def transcribe_job(engine, msg, send):
         offset = float(msg.get("offset") or 0)
         voice = await voice_stem(engine, msg.get("stream"), offset, len(samples))
         t0 = time.perf_counter()
-        words, text = await engine.transcribe(samples if voice is None else voice, offset)
+        words, text, hits = await engine.transcribe(samples if voice is None else voice, offset)
         engine.from_voice += voice is not None
-        reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text, "source": "mix" if voice is None else "vocals", "aligned": sum(1 for w in words if w.get("aligned"))}
+        reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text, "source": "mix" if voice is None else "vocals", "aligned": sum(1 for w in words if w.get("aligned")), "spotted": hits}
     except Exception as e:
         log.exception("transcribe failed")
         t0 = time.perf_counter()
@@ -402,6 +418,10 @@ async def handle(ws, engine):
                 engine.stems.playhead(msg["stream"], float(msg["time"]))
             elif kind == "stem_close" and engine.stems:
                 engine.stems.close(msg["stream"])
+            elif kind == "kws_words":
+                if engine.spotter is not None:
+                    engine.spotter.set_words(msg.get("words") or [])
+                    log.info("swear spotting: %d patterns from the word list", len(engine.spotter.patterns))
             elif kind == "stem_clip" and engine.stems:
                 task = asyncio.create_task(stem_clip_job(engine, msg, send))
                 tasks.add(task)

@@ -69,6 +69,11 @@ chrome.runtime.onConnect.addListener((port) => {
         ensureWorker(session);
         worker.postMessage({ type: 'audio', session, samples }, [samples.buffer]);
       }
+    } else if (msg.type === 'kwsWords') {
+      // The word list for the companion's swear spotter (step 6); kept so it
+      // can be sent again when the companion reconnects.
+      kwsWords = msg.words || [];
+      if (companion.ready) companion.forward({ type: 'kws_words', words: kwsWords });
     } else if (msg.type === 'stemClip') {
       if (!companion.ready) return safePost(port, { type: 'stem_clip', id: msg.id, error: 'companion not running' });
       const job = nextJob++;
@@ -127,6 +132,7 @@ chrome.runtime.onConnect.addListener((port) => {
 const configs = new Map(); // session -> last config message
 const stemStreams = new Map(); // stream (blob URL) -> session, for stem status replies
 const clipJobs = new Map(); // companion request id -> { session, id } for stem clips
+let kwsWords = null; // latest word list for the swear spotter
 const configured = new Set(); // sessions whose config the worker has seen
 
 function ensureWorker(session) {
@@ -201,7 +207,9 @@ const companion = {
       if (m.type === 'status') {
         this.info = m;
         this.answered = true;
+        const wasReady = this.ready;
         this.ready = m.state === 'ready';
+        if (this.ready && !wasReady && kwsWords) this.forward({ type: 'kws_words', words: kwsWords });
         if (!this.ready && m.state !== 'loading') for (const session of configs.keys()) ensureWorker(session);
         this.broadcast();
       } else if (m.type === 'stem_clip') {
@@ -371,6 +379,7 @@ function streamReply(job, m) {
       text: m.text,
       engine: 'companion',
       model: m.model,
+      spotted: m.spotted || [],
     });
   }
   pumpStream(job.session);

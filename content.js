@@ -101,7 +101,10 @@
     for (const [k, { newValue }] of Object.entries(changes)) {
       settings[k] = newValue === undefined ? PF.DEFAULTS[k] : newValue;
     }
-    if (changes.words) compiled = PFFilter.compileWordList(settings.words);
+    if (changes.words) {
+      compiled = PFFilter.compileWordList(settings.words);
+      sendKwsWords();
+    }
     if (changes.model) {
       passTimes = [];
       needs = [];
@@ -502,6 +505,7 @@
       const wasReady = state.companion?.state === 'ready';
       state.companion = msg;
       updateFullAudio();
+      if (!wasReady && msg.state === 'ready') sendKwsWords();
       if (wasReady !== (msg.state === 'ready')) {
         storedNeed = null; // different engine, different speed
         loadStoredNeed();
@@ -534,7 +538,7 @@
       msg.words = msg.words.map((w) => (w.aligned ? w : { ...w, start: w.start - l.start, end: w.end - l.end }));
       lag = NO_LAG;
     }
-    for (const m of PFFilter.findMatches(msg.words, compiled)) {
+    for (const m of [...PFFilter.findMatches(msg.words, compiled), ...spottedMatches(msg.spotted, -Infinity, Infinity)]) {
       const pad = coverFor(m);
       const s = timeOf(m.start - lag.start - pad.before);
       const e = timeOf(m.end - lag.end + pad.after);
@@ -1419,7 +1423,11 @@
     look.transcriber = new LookaheadTranscriber({
       timeline,
       words,
-      transcribe: (samples, offset) => requestTranscribe(samples, offset, src),
+      transcribe: (samples, offset) =>
+        requestTranscribe(samples, offset, src).then((res) => {
+          addSpotted(look, res.spotted);
+          return res;
+        }),
       // Where the companion's voice detector heard speech (step 5.1), for
       // stretches it has separated; null elsewhere. Off: cutting windows at
       // pauses measured slightly worse than fixed 10 s windows with 1 s of
@@ -1449,6 +1457,31 @@
   // (roadmap step 4.2). The page bridge only sends it while asked to, since
   // nothing else needs it.
   let fullAudioOn = false;
+  // ───── swear spotter (steps 6 and 7.2) ─────
+  // The companion's keyword spotter listens for the word list's spellings in
+  // the audio itself, so a swear Whisper misheard (or wrote as a look-alike)
+  // is still caught: a word is cut if either detector is confident.
+  function addSpotted(look, hits) {
+    if (!hits?.length) return;
+    look.spotted = look.spotted || [];
+    for (const h of hits) {
+      if (look.spotted.some((k) => k.word === h.word && Math.abs(k.start - h.start) < 0.3)) continue;
+      look.spotted.push(h);
+    }
+    if (look.spotted.length > 500) look.spotted.splice(0, look.spotted.length - 500);
+  }
+
+  function spottedMatches(hits, t0, t1) {
+    return (hits || [])
+      .filter((h) => h.start >= t0 && h.start < t1)
+      .map((h) => ({ start: h.start, end: h.end, text: h.word.replace(/\*/g, ''), rule: `${h.word} (heard by the spotter)`, aligned: true, spotted: true, score: h.score }));
+  }
+
+  // The swear spotter in the companion (step 6) works from the same list.
+  function sendKwsWords() {
+    if (port && state.companion?.state === 'ready') port.postMessage({ type: 'kwsWords', words: settings.words });
+  }
+
   function updateFullAudio() {
     const want = !!(settings.enabled && settings.lookahead && port && state.companion?.state === 'ready' && state.companion.stems);
     if (want === fullAudioOn) return;
@@ -1590,7 +1623,7 @@
     const look = lookFor(video);
     if (!look || !ctx) return;
     const t = video.currentTime;
-    for (const m of PFFilter.findMatches(look.words.between(t - 3, t + 1), compiled)) {
+    for (const m of [...PFFilter.findMatches(look.words.between(t - 3, t + 1), compiled), ...spottedMatches(look.spotted, t - 3, t + 1)]) {
       const pad = coverFor(m); // lookahead words are already in true time
       const m0 = m.start - pad.before;
       const m1 = m.end + pad.after;
@@ -1626,7 +1659,7 @@
   // Turn upcoming swears in the transcript into mutes, timed by ClockSync.
   function scheduleLookaheadMutes(video, look) {
     const t = video.currentTime;
-    for (const m of PFFilter.findMatches(look.words.between(t - 2, t + SCHEDULE_AHEAD), compiled)) {
+    for (const m of [...PFFilter.findMatches(look.words.between(t - 2, t + SCHEDULE_AHEAD), compiled), ...spottedMatches(look.spotted, t - 2, t + SCHEDULE_AHEAD)]) {
       const key = Math.round(m.start * 100) + ':' + m.text;
       if (look.scheduled.has(key)) continue;
       const pad = coverFor(m); // lookahead words are already in true time
@@ -1637,7 +1670,7 @@
       const c1 = look.sync.heardAt(m1);
       if (c0 == null || c1 == null) continue; // no clock fit yet
       look.scheduled.add(key);
-      if (SILENT_TEST) testLog.mutes.push({ text: m.text, aligned: !!m.aligned, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
+      if (SILENT_TEST) testLog.mutes.push({ text: m.text, aligned: !!m.aligned, spotted: !!m.spotted, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
       addInterval(c0 + currentDelay, c1 + currentDelay, m);
       requestStemClip(look, key, m0 - CLIP_MARGIN, m1 + CLIP_MARGIN);
       updateBadges(); // refresh the "N filtered" count
