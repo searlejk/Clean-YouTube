@@ -39,9 +39,9 @@ from websockets.datastructures import Headers
 from stems import StemStore, resample
 
 ASR_INPUT = "vocals"  # "vocals": transcribe the separated voice stem when ready (step 4.3); "mix": never
-STEM_WAIT_S = 1.0  # how long a transcription about to be heard waits for its stretch to be separated
-STEM_WAIT_FAR_S = 8.0  # ... and one more than FAR_AHEAD_S ahead of the playhead
-FAR_AHEAD_S = 12.0
+STEM_WAIT_S = 1.0  # shortest wait for a window's stretch to be separated
+STEM_WAIT_FAR_S = 8.0  # longest
+SAFE_MARGIN_S = 7.0  # a window waits at most (seconds until it plays) - this
 
 PROTOCOL = 1
 SR = 16000
@@ -238,22 +238,68 @@ async def transcribe_job(engine, msg, send):
         pass
 
 
+CLIP_WAIT_S = 5.0  # how long a stem clip request waits for separation
+CLIP_MAX_S = 10.0
+
+
+def int16_b64(x):
+    """[c, n] float32 -> base64 of interleaved little-endian int16."""
+    return base64.b64encode((np.clip(x.T, -1, 1) * 32767).astype("<i2").tobytes()).decode()
+
+
+async def stem_clip_job(engine, msg, send):
+    """Stems for a short stretch around a swear, for the mixer (step 4.4):
+    {type: 'stem_clip', id, stream, from, to, vocals?} -> {type: 'stem_clip', id,
+    start, rate, channels, background, vocals?} or {..., error}."""
+    reply = {"type": "stem_clip", "id": msg.get("id"), "stream": msg.get("stream")}
+    try:
+        t0, t1 = float(msg["from"]), float(msg["to"])
+        if not (0 < t1 - t0 <= CLIP_MAX_S):
+            raise ValueError("bad clip length")
+        deadline = time.monotonic() + CLIP_WAIT_S
+        while True:
+            got = engine.stems.clip(msg["stream"], t0, t1)
+            if got is not None or time.monotonic() > deadline or not engine.stems.received(msg["stream"], t0, t1):
+                break
+            await asyncio.sleep(0.05)
+        if got is None:
+            reply["error"] = "not separated"
+        else:
+            start, rate, vocals, background = got
+            reply.update(start=start, rate=rate, channels=2, background=int16_b64(background))
+            if msg.get("vocals"):
+                reply["vocals"] = int16_b64(vocals)
+    except Exception as e:
+        reply["error"] = str(e)
+    try:
+        await send(reply)
+    except websockets.ConnectionClosed:
+        pass
+
+
 async def voice_stem(engine, stream, offset, n):
     """The separated voice for n samples (16 kHz) from `offset`, as mono 16 kHz,
     waiting if that stretch is still being separated; else None. A window far
     ahead of the playhead can wait longer than one about to be heard."""
     if ASR_INPUT != "vocals" or not engine.stems or not stream:
+        log.debug("window %.1f s: mix (no stream id or separation off)", offset)
         return None
     t0, t1 = offset, offset + n / SR
     ph = engine.stems.streams.get(stream, {}).get("playhead")
-    wait = STEM_WAIT_FAR_S if ph is not None and t0 - ph > FAR_AHEAD_S else STEM_WAIT_S
+    # The extension schedules mutes ~6 s before a word plays, so a window
+    # starting `ahead` seconds out can spend about ahead - 7 s waiting.
+    wait = STEM_WAIT_S if ph is None else min(STEM_WAIT_FAR_S, max(STEM_WAIT_S, t0 - ph - SAFE_MARGIN_S))
     deadline = time.monotonic() + wait
     while True:
         got = engine.stems.get(stream, t0, t1)
         if got is not None:
+            log.debug("window %.1f-%.1f s: voice (playhead %s)", t0, t1, ph)
             vocals = got[0].mean(axis=0, keepdims=True)
             return resample(vocals, n)[0]
-        if not engine.stems.received(stream, t0, t1) or time.monotonic() > deadline:
+        # Its full-quality audio may arrive a moment after the window itself,
+        # so only a stream we've never had stem audio for gives up at once.
+        if stream not in engine.stems.streams or time.monotonic() > deadline:
+            log.debug("window %.1f-%.1f s: mix (playhead %s, waited %.1f s, known stream %s, ready %s)", t0, t1, ph, wait, stream in engine.stems.streams, engine.stems.ranges(stream))
             return None
         await asyncio.sleep(0.05)
 
@@ -262,9 +308,14 @@ def pcm16_to_float32(b64):
     return np.frombuffer(base64.b64decode(b64), dtype="<i2").astype(np.float32) / 32768.0
 
 
-def make_origin_check(cfg, allow_any):
+LOCAL_PAGE = ("http://127.0.0.1:", "http://localhost:")
+
+
+def make_origin_check(cfg, allow_any, allow_local_pages=False):
     def check(connection, request):
         origin = request.headers.get("Origin", "")
+        if allow_local_pages and origin.startswith(LOCAL_PAGE):
+            return None  # development: the extension's test pages
         if not origin.startswith("chrome-extension://"):
             log.warning("refused connection from origin %r", origin)
             return Response(403, "Forbidden", Headers([("Content-Type", "text/plain")]), b"Only the Clean Ears extension may connect.\n")
@@ -320,6 +371,10 @@ async def handle(ws, engine):
                 engine.stems.playhead(msg["stream"], float(msg["time"]))
             elif kind == "stem_close" and engine.stems:
                 engine.stems.close(msg["stream"])
+            elif kind == "stem_clip" and engine.stems:
+                task = asyncio.create_task(stem_clip_job(engine, msg, send))
+                tasks.add(task)
+                task.add_done_callback(tasks.discard)
             elif kind == "transcribe":
                 if engine.model is None:
                     await send({"type": "transcribed", "id": msg.get("id"), "error": "model not ready"})
@@ -367,12 +422,13 @@ async def main():
     p.add_argument("--port", type=int, default=int(os.environ.get("CLEAN_EARS_PORT", 47823)))
     p.add_argument("--reset-pairing", action="store_true", help="forget the paired extension")
     p.add_argument("--allow-any-extension", action="store_true", help="skip pairing (development)")
+    p.add_argument("--allow-local-test-pages", action="store_true", help="also accept pages served from 127.0.0.1/localhost (development)")
     p.add_argument("--check", action="store_true", help="download the model, time one pass, and exit")
     p.add_argument("--asr-input", default=ASR_INPUT, choices=["vocals", "mix"], help="transcribe the separated voice (default) or the full mix")
     args = p.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
-    for noisy in ("httpx", "faster_whisper"):
+    logging.basicConfig(level=logging.DEBUG if os.environ.get("CLEAN_EARS_DEBUG") else logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    for noisy in ("httpx", "faster_whisper", "websockets", "asyncio", "httpcore", "urllib3", "filelock", "huggingface_hub"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     if args.check:
         return await check(args)
@@ -391,7 +447,7 @@ async def main():
         lambda ws: handle(ws, engine),
         "127.0.0.1",
         args.port,
-        process_request=make_origin_check(cfg, args.allow_any_extension),
+        process_request=make_origin_check(cfg, args.allow_any_extension, args.allow_local_test_pages),
         max_size=8 * 1024 * 1024,
     ):
         log.info("listening on ws://127.0.0.1:%d (model %s)", args.port, args.model)

@@ -69,6 +69,11 @@ chrome.runtime.onConnect.addListener((port) => {
         ensureWorker(session);
         worker.postMessage({ type: 'audio', session, samples }, [samples.buffer]);
       }
+    } else if (msg.type === 'stemClip') {
+      if (!companion.ready) return safePost(port, { type: 'stem_clip', id: msg.id, error: 'companion not running' });
+      const job = nextJob++;
+      clipJobs.set(job, { session, id: msg.id });
+      companion.forward({ type: 'stem_clip', id: job, stream: msg.stream, from: msg.from, to: msg.to, vocals: !!msg.vocals });
     } else if (msg.type === 'stemAudio' || msg.type === 'stemPlayhead') {
       // Voice separation (roadmap step 4.2) runs only in the companion.
       if (!companion.ready) return;
@@ -121,6 +126,7 @@ chrome.runtime.onConnect.addListener((port) => {
 // Sessions whose built-in model setup is held back while the companion runs.
 const configs = new Map(); // session -> last config message
 const stemStreams = new Map(); // stream (blob URL) -> session, for stem status replies
+const clipJobs = new Map(); // companion request id -> { session, id } for stem clips
 const configured = new Set(); // sessions whose config the worker has seen
 
 function ensureWorker(session) {
@@ -154,7 +160,7 @@ const companion = {
   answered: false, // has the first connection attempt finished?
 
   status() {
-    return { type: 'companion', state: this.ready ? 'ready' : this.ws ? this.info.state || 'connecting' : 'off', model: this.info.model, device: this.info.device };
+    return { type: 'companion', state: this.ready ? 'ready' : this.ws ? this.info.state || 'connecting' : 'off', model: this.info.model, device: this.info.device, stems: !!this.info.stems };
   },
   broadcast() {
     const s = this.status();
@@ -198,6 +204,11 @@ const companion = {
         this.ready = m.state === 'ready';
         if (!this.ready && m.state !== 'loading') for (const session of configs.keys()) ensureWorker(session);
         this.broadcast();
+      } else if (m.type === 'stem_clip') {
+        const job = clipJobs.get(m.id);
+        clipJobs.delete(m.id);
+        const port = job && ports.get(job.session);
+        if (port) safePost(port, { ...m, id: job.id });
       } else if (m.type === 'stems') {
         const port = ports.get(stemStreams.get(m.stream));
         if (port) safePost(port, m);
@@ -223,6 +234,11 @@ const companion = {
       // The built-in model takes over: load it for every tab.
       for (const session of configs.keys()) ensureWorker(session);
       for (const st of streams.values()) st.busy = false;
+      for (const [job, j] of clipJobs) {
+        const port = ports.get(j.session);
+        if (port) safePost(port, { type: 'stem_clip', id: j.id, error: 'companion stopped' });
+        clipJobs.delete(job);
+      }
       // Anything the companion hadn't answered goes to the browser model.
       for (const id of this.sent) {
         const job = jobs.get(id);

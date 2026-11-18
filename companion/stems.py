@@ -14,6 +14,8 @@ edges don't sound different, and the stems are stored by media time.
     store.finish(job())                     # back on the main thread
     store.ranges(stream)                    # [[from, to], ...] media seconds ready
     store.get(stream, t0, t1)               # (vocals, background) [2, n] at 48 kHz, or None
+    store.clip(stream, t0, t1)              # (start, rate, vocals, background): start is the exact
+                                            # media time of sample 0 (t0 snapped to a sample)
 """
 
 import time
@@ -24,7 +26,7 @@ from separation import SR as MODEL_SR
 
 BLOCK_S = 10.4  # seconds of output per block (two model chunks with the context)
 CONTEXT_S = 0.5  # real audio on each side of a block, discarded after
-IDLE_FLUSH_S = 3.0  # a run that stopped growing this long gets its tail done
+IDLE_FLUSH_S = 1.0  # a run that stopped growing this long gets its tail done
 KEEP_BEHIND_S = 30.0  # stems kept behind the playhead
 MAX_AHEAD_S = 600.0  # audio further ahead than this is ignored
 JOIN = 0.002  # seconds; closer than this counts as continuous
@@ -189,6 +191,22 @@ class StemStore:
         """Has the audio for [t0, t1) arrived (separated or not)?"""
         st = self.streams.get(stream)
         return bool(st) and any(r.start <= t0 + JOIN and r.end_time() >= t1 - JOIN for r in st["runs"])
+
+    def clip(self, stream, t0, t1):
+        """Like get(), but also says exactly where the clip starts: t0 rounded
+        to the run's sample grid, so the mixer can line it up to the sample."""
+        st = self.streams.get(stream)
+        if not st:
+            return None
+        for run in st["runs"]:
+            if not (run.start - JOIN <= t0 and t1 <= run.end_time() + JOIN):
+                continue
+            a = round((t0 - run.start) * run.rate)
+            start = run.start + a / run.rate
+            got = self.get(stream, start, start + round((t1 - t0) * run.rate) / run.rate)
+            if got is not None:
+                return start, run.rate, got[0], got[1]
+        return None
 
     def get(self, stream, t0, t1):
         """Stems covering [t0, t1) at the stream's rate, or None if not all ready."""

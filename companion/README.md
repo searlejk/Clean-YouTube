@@ -23,3 +23,12 @@ built-in model loads and takes over.
 
 Speed on an M4 (10 s of audio): small.en 0.67 s on GPU, base.en 0.25 s,
 tiny.en 0.2 s on CPU.
+
+## Development
+
+- `companion/server.py --allow-local-test-pages` also accepts the extension's
+  test pages served from 127.0.0.1 (for `tests/extension/harness-companion.html`).
+- `CLEAN_EARS_DEBUG=1` logs, for every transcription window, whether it used
+  the separated voice and why not.
+- Tests: `tests/word_timing.py`, `tests/separation_bench.py`,
+  `tests/test_stems.py`, `tests/test_stem_clips.py`, `tests/music_asr_bench.py`.

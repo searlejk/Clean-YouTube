@@ -31,17 +31,38 @@
     window.postMessage({ __cleanEars: 1, type: 'pcm', src, time: p.time, samples }, '*', [samples.buffer]);
   }
 
-  // Full-rate audio, batched to ~1 s, only while asked for.
+  // Full-rate audio, batched to ~1 s. What's decoded ahead of the playhead
+  // is kept (as 16-bit, ~11 MB per minute ahead) so that when the companion
+  // starts listening it gets everything already downloaded, not just what
+  // arrives after.
   const FULL_BATCH = 1.0;
+  const KEEP_AHEAD_S = 180;
   let fullOn = false;
   const fullPending = new Map(); // stream -> { time, rate, channels, parts, n }
+  const kept = new Map(); // stream -> [{ src, time, rate, channels, pcm }]
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (e.source === window && m && m.__cleanEars === 1 && m.type === 'fullAudio') {
+      const was = fullOn;
       fullOn = !!m.on;
-      if (!fullOn) fullPending.clear();
+      if (fullOn && !was) for (const list of kept.values()) for (const b of list) post(b);
     }
   });
+
+  function post(b) {
+    const pcm = b.pcm.slice();
+    window.postMessage({ __cleanEars: 1, type: 'pcm48', src: b.src, time: b.time, rate: b.rate, channels: b.channels, pcm }, '*', [pcm.buffer]);
+  }
+
+  // Drop batches already played (or too far ahead to matter yet).
+  function prune(stream) {
+    const list = kept.get(stream);
+    if (!list) return;
+    const el = stream.element();
+    const t = el ? el.currentTime : null;
+    const keep = list.filter((b) => t == null || (b.time + b.pcm.length / b.channels / b.rate > t - 1 && b.time < t + KEEP_AHEAD_S));
+    kept.set(stream, keep);
+  }
 
   function sendFull(stream, p) {
     const src = stream.src();
@@ -57,11 +78,14 @@
         }
       }
     }
-    window.postMessage({ __cleanEars: 1, type: 'pcm48', src, time: p.time, rate: p.rate, channels: p.channels, pcm }, '*', [pcm.buffer]);
+    const b = { src, time: p.time, rate: p.rate, channels: p.channels, pcm };
+    if (!kept.has(stream)) kept.set(stream, []);
+    kept.get(stream).push(b);
+    prune(stream);
+    if (fullOn) post(b);
   }
 
   function onFullPcm(stream, chunk) {
-    if (!fullOn) return;
     let p = fullPending.get(stream);
     if (p && (p.rate !== chunk.rate || Math.abs(p.time + p.n / p.rate - chunk.time) > 0.002)) {
       sendFull(stream, p);
@@ -110,5 +134,6 @@
   setInterval(() => {
     for (const [stream, p] of fullPending) sendFull(stream, p);
     fullPending.clear();
+    for (const stream of kept.keys()) prune(stream);
   }, 1200);
 })();

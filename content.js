@@ -468,6 +468,10 @@
       }
       return;
     }
+    if (msg.type === 'stem_clip') {
+      onStemClip(msg);
+      return;
+    }
     if (msg.type === 'stems') {
       const look = looks.get(msg.stream);
       if (look) look.stems = msg.ranges || [];
@@ -1257,6 +1261,98 @@
 
   // Lookahead can run on the companion app even while the in-browser model
   // is still loading.
+  // ───── stem clips for the mixer (roadmap step 4.4) ─────
+  // For each upcoming swear, the companion's separated background (music and
+  // effects without the voice) for that stretch, fetched a few seconds ahead
+  // and kept as an AudioBuffer whose first sample is at media time `start`.
+  // The mixer (step 12) plays it in place of the muted mix.
+  const CLIP_MARGIN = 0.05; // extra on each side, for crossfades
+  let nextClipId = 1;
+  const clipRequests = new Map(); // id -> { look, key }
+  const clipStats = { requested: 0, ready: 0, failed: 0, leadMs: [], checks: [] };
+
+  function requestStemClip(look, key, from, to) {
+    if (!fullAudioOn || !port || look.clips?.has(key)) return;
+    look.clips = look.clips || new Map();
+    const id = nextClipId++;
+    look.clips.set(key, { from, to, requestedAt: performance.now(), buffer: null });
+    clipRequests.set(id, { look, key });
+    clipStats.requested++;
+    port.postMessage({ type: 'stemClip', id, stream: look.src, from, to, vocals: SILENT_TEST });
+  }
+
+  function base64ToInt16(b64) {
+    const bin = atob(b64);
+    const out = new Int16Array(bin.length >> 1);
+    for (let i = 0; i < out.length; i++) {
+      let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+      out[i] = v & 0x8000 ? v - 0x10000 : v;
+    }
+    return out;
+  }
+
+  function toAudioBuffer(pcm, channels, rate) {
+    const n = Math.floor(pcm.length / channels);
+    const buf = ctx.createBuffer(channels, n, rate);
+    for (let c = 0; c < channels; c++) {
+      const ch = buf.getChannelData(c);
+      for (let i = 0; i < n; i++) ch[i] = pcm[i * channels + c] / 32767;
+    }
+    return buf;
+  }
+
+  function onStemClip(msg) {
+    const req = clipRequests.get(msg.id);
+    clipRequests.delete(msg.id);
+    const clip = req && req.look.clips?.get(req.key);
+    if (!clip || !ctx) return;
+    if (msg.error || !msg.background) {
+      clip.error = msg.error || 'empty';
+      clipStats.failed++;
+      return;
+    }
+    clip.start = msg.start;
+    clip.buffer = toAudioBuffer(base64ToInt16(msg.background), msg.channels, msg.rate);
+    clipStats.ready++;
+    const v = videoForSrc(req.look.src);
+    if (v) clipStats.leadMs.push(Math.round((clip.from - v.currentTime) * 1000));
+    if (clipStats.leadMs.length > 50) clipStats.leadMs.shift();
+    if (SILENT_TEST && msg.vocals) checkClipAlignment(req.look, msg);
+  }
+
+  // Test diagnostics: voice + background, brought to 16 kHz, should line up
+  // with the decoded audio the transcript was made from at the same media
+  // time (best match at 0 ms).
+  function checkClipAlignment(look, msg) {
+    const bg = base64ToInt16(msg.background);
+    const voc = base64ToInt16(msg.vocals);
+    const ch = msg.channels;
+    const n48 = Math.floor(bg.length / ch);
+    const n16 = Math.floor(n48 / 3);
+    const mix = new Float32Array(n16);
+    for (let i = 0; i < n16; i++) {
+      let acc = 0;
+      for (let k = 0; k < 3; k++) for (let c = 0; c < ch; c++) acc += bg[(3 * i + k) * ch + c] + voc[(3 * i + k) * ch + c];
+      mix[i] = acc / (3 * ch * 32767);
+    }
+    const W = 16; // ±1 ms
+    const ref = look.timeline.read(msg.start - W / 16000, msg.start + (n16 + W) / 16000);
+    if (!ref || ref.covered < 0.99) return;
+    let best = { lag: 0, c: -2 };
+    for (let lag = -W; lag <= W; lag++) {
+      let xy = 0, xx = 0, yy = 0;
+      for (let i = 0; i < n16; i++) {
+        const x = mix[i], y = ref.samples[i + W + lag] || 0;
+        xy += x * y; xx += x * x; yy += y * y;
+      }
+      const c = xy / Math.sqrt(xx * yy + 1e-12);
+      if (c > best.c) best = { lag, c };
+    }
+    const level = Math.sqrt(mix.reduce((s, x) => s + x * x, 0) / (n16 || 1));
+    clipStats.checks.push({ at: +msg.start.toFixed(3), lagMs: +(best.lag / 16).toFixed(3), corr: +best.c.toFixed(4), level: +level.toFixed(4) });
+    if (clipStats.checks.length > 30) clipStats.checks.shift();
+  }
+
   // Seconds of voice/background stems the companion has ready past `t`.
   function stemsAhead(look, t) {
     for (const [a, b] of look.stems || []) if (a <= t + 0.05 && t <= b) return +(b - t).toFixed(2);
@@ -1508,6 +1604,7 @@
       look.scheduled.add(key);
       if (SILENT_TEST) testLog.mutes.push({ text: m.text, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
       addInterval(c0 + currentDelay, c1 + currentDelay, m);
+      requestStemClip(look, key, m0 - CLIP_MARGIN, m1 + CLIP_MARGIN);
       updateBadges(); // refresh the "N filtered" count
     }
   }
@@ -1565,6 +1662,7 @@
         return;
       }
       scheduleLookaheadMutes(v, look);
+      if (look.clips) for (const [k, c] of look.clips) if (c.to < v.currentTime - 5) look.clips.delete(k); // played
       if (ctx.currentTime - lastCalibration > 2) {
         lastCalibration = ctx.currentTime;
         look.sync.calibrate(ctx.currentTime);
@@ -1597,6 +1695,7 @@
         lastEngine: state.lastEngine || null,
         fullAudio: fullAudioOn,
         asrSource: state.asrSource,
+        clips: clipStats,
         stems: look ? look.stems || [] : [],
         stemsAhead: look && v ? stemsAhead(look, v.currentTime) : null,
         heard: state.lastText || '', // last delay-mode transcript text

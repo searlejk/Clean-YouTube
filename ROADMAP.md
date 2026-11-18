@@ -354,7 +354,28 @@ extension sends it to a local companion app that runs the heavy models.
       little higher with quiet music (separation adds slight artifacts), much
       lower when music is loud. Synthetic voices are cleaner than real ones;
       the real-video check is in [TESTING.md](TESTING.md).
-- [ ] 4.4 Keep both stems time-aligned for the mixer (step 12).
+- [x] 4.4 Keep both stems time-aligned for the mixer (step 12).
+      *Result (v1.9.0):* for each swear it schedules, the extension asks the
+      companion for the separated background (music/effects without the
+      voice) for that stretch plus 50 ms each side, and keeps it as an
+      AudioBuffer whose first sample is at a known media time, so the mixer
+      can play it in place of the muted mix using the same clock mapping as
+      the mutes. Offline: clips start exactly where asked (to the sample) and
+      voice + background equal the original with 0 samples of offset,
+      including across block edges. End to end in a test page running the
+      real page bridge, content script and offscreen page against a test
+      companion ([tests/extension/harness-companion.html](tests/extension/harness-companion.html)):
+      9/9 clips ready 5.0–5.6 s before their swear played, and a built-in
+      check put each clip at **0 ms** from the audio the transcript came from
+      (correlation ≥ 0.997). That test also found and fixed four problems:
+      the "separation available" flag was dropped on its way to the tab (so
+      4.2 and 4.3 would never have turned on), transcription gave up on its
+      voice stem when the full-quality audio arrived a moment late, waited
+      too little for windows ~10 s ahead (now waits up to "seconds until it
+      plays − 7"), and the first ~27 s of each video were never separated
+      (the page bridge now keeps what it has decoded ahead and sends it when
+      the companion starts listening). After the fixes every window except
+      the very first used the separated voice.
 
 ## 5. WhisperX ASR + Silero VAD → alignment (word timings)
 

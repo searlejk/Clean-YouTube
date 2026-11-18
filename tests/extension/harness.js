@@ -1,6 +1,8 @@
 // YouTube-like MediaSource player for the extension harness: plays
-// ../lookahead/fixtures/long.webm, appended in random slices ~20 s ahead.
+// ../lookahead/fixtures/long.webm, appended in random slices ~20 s ahead
+// (?ahead=60 for 60 s, closer to YouTube's buffering).
 const H = (window.H = { ready: false, error: null });
+const AHEAD = Number(new URLSearchParams(location.search).get('ahead')) || 20;
 document.getElementById('start').addEventListener('click', async () => {
   try {
     const bytes = new Uint8Array(await (await fetch('../lookahead/fixtures/long.webm')).arrayBuffer());
@@ -25,7 +27,7 @@ document.getElementById('start').addEventListener('click', async () => {
     pos = clusters[0].offset;
     (async () => { for (;;) {
       const g = gen;
-      if (pos < bytes.length && timeAt(pos) < video.currentTime + 20 && !sb.updating) {
+      if (pos < bytes.length && timeAt(pos) < video.currentTime + AHEAD && !sb.updating) {
         const n = 8000 + Math.floor(rnd() * 32000);
         try { await append(bytes.subarray(pos, Math.min(bytes.length, pos + n))); if (g === gen) pos = Math.min(bytes.length, pos + n); } catch {}
       } else await new Promise((r) => setTimeout(r, 50));

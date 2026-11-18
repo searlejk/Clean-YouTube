@@ -9,6 +9,16 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.9.0 · roadmap step 4.4 (background clips for the mixer)
+
+Nothing you can hear changes yet (step 12 will use the clips).
+
+- [ ] **Still filters normally** with the companion running: no delay,
+      swears muted, the popup's totals go up.
+- [ ] **Voice stem from the start.** In the companion's Terminal, the
+      per-minute line *served N windows (…, M from the separated voice)*:
+      M should now be nearly all of N, even in the first minute of a video.
+
 ## Version 1.8.0 · roadmap step 4.3 (transcribing the separated voice)
 
 - [ ] **Voice stem used.** With the companion running, play a video with

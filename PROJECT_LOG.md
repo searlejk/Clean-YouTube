@@ -15,4 +15,5 @@
 | 11/18/2026 | Lifetime "words blocked" total and "days profanity free" in the popup; roadmap step 4.1: voice/music separation in the companion (UVR MDX-Net, 10 s of audio in 0.7 s on the Mac GPU), measured speed and quality | 0.2 |
 | 11/18/2026 | Roadmap step 4.2: full-quality lookahead audio sent to the companion, which separates voice and background ahead of playback; tested the audio path against ffmpeg and the separation offline and through the companion | 0.25 |
 | 11/18/2026 | Roadmap step 4.3: the companion transcribes the separated voice; built a 5-clip test (speech over CC0 music at three loudness levels): every swear found with the voice stem vs 11–13 of 14 from the mix, word errors down from 18% to 11% under loud music | 0.3 |
-| **Total** | | **10.05** |
+| 11/18/2026 | Roadmap step 4.4: background clips for each upcoming swear, aligned to the sample for the mixer; built an end-to-end test page (real extension scripts + companion) that found and fixed four problems keeping separation from being used | 0.35 |
+| **Total** | | **10.4** |
