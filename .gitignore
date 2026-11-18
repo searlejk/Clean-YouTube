@@ -12,3 +12,4 @@ tests/lookahead/fixtures/ten-minutes.*
 companion/.venv/
 __pycache__/
 companion/models/
+companion/tests/music/

@@ -9,6 +9,16 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.8.0 · roadmap step 4.3 (transcribing the separated voice)
+
+- [ ] **Voice stem used.** With the companion running, play a video with
+      music under the speech for a minute. The companion's Terminal prints
+      *served N windows (… , M from the separated voice)*; M should be most
+      of N after the first few seconds.
+- [ ] **Swears under music.** On a video where someone swears over loud
+      music, the swears are caught (compare with `companion/start.sh
+      --asr-input mix` if you want to see the difference).
+
 ## Version 1.7.0 · roadmap step 4.2 (voice/music separation)
 
 Start the companion so it saves a sample of what it separates:

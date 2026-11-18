@@ -62,6 +62,7 @@
   let compiled = PFFilter.compileWordList(settings.words);
 
   const state = {
+    asrSource: {}, // companion windows transcribed from the voice stem vs the full mix
     engine: 'idle', // idle | connecting | loading | ready | error | disconnected
     progress: 0,
     device: null,
@@ -460,6 +461,7 @@
       else {
         state.processingMs = state.processingMs ? state.processingMs * 0.8 + msg.processingMs * 0.2 : msg.processingMs;
         state.lastEngine = msg.engine === 'companion' ? 'companion' : 'browser';
+        if (msg.source) state.asrSource[msg.source] = (state.asrSource[msg.source] || 0) + 1;
         const lag = lagFor(msg);
         const words = (msg.words || []).map((w) => ({ text: w.text, start: w.start - lag.start, end: w.end - lag.end }));
         job.resolve({ ...msg, words });
@@ -1273,12 +1275,14 @@
     return state.engine;
   }
 
-  function requestTranscribe(samples, offset) {
+  // `stream` (the player's blob URL) lets the companion transcribe its
+  // separated voice stem for that stretch instead (roadmap step 4.3).
+  function requestTranscribe(samples, offset, stream) {
     return new Promise((resolve, reject) => {
       if (!transcribeReady()) return reject(new Error('engine not ready'));
       const id = nextTranscribeId++;
       transcribeJobs.set(id, { resolve, reject });
-      port.postMessage({ type: 'transcribe', id, offset, pcm16: float32ToPcm16Base64(samples) });
+      port.postMessage({ type: 'transcribe', id, offset, stream, pcm16: float32ToPcm16Base64(samples) });
     });
   }
 
@@ -1290,7 +1294,7 @@
     look.transcriber = new LookaheadTranscriber({
       timeline,
       words,
-      transcribe: requestTranscribe,
+      transcribe: (samples, offset) => requestTranscribe(samples, offset, src),
       playhead: () => videoForSrc(src)?.currentTime ?? null,
       duration: () => {
         const v = videoForSrc(src);
@@ -1592,6 +1596,7 @@
         companion: state.companion || null,
         lastEngine: state.lastEngine || null,
         fullAudio: fullAudioOn,
+        asrSource: state.asrSource,
         stems: look ? look.stems || [] : [],
         stemsAhead: look && v ? stemsAhead(look, v.currentTime) : null,
         heard: state.lastText || '', // last delay-mode transcript text

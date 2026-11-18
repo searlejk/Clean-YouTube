@@ -36,7 +36,12 @@ from websockets.asyncio.server import serve
 from websockets.http11 import Response
 from websockets.datastructures import Headers
 
-from stems import StemStore
+from stems import StemStore, resample
+
+ASR_INPUT = "vocals"  # "vocals": transcribe the separated voice stem when ready (step 4.3); "mix": never
+STEM_WAIT_S = 1.0  # how long a transcription about to be heard waits for its stretch to be separated
+STEM_WAIT_FAR_S = 8.0  # ... and one more than FAR_AHEAD_S ahead of the playhead
+FAR_AHEAD_S = 12.0
 
 PROTOCOL = 1
 SR = 16000
@@ -74,6 +79,7 @@ class Engine:
         self.stems = None  # StemStore once the separation model is loaded
         self.stem_owners = {}  # stream -> send function of the tab's connection
         self.served = 0  # windows since the last stats line
+        self.from_voice = 0  # of those, transcribed from the separated voice
         self.audio_s = 0.0
         self.busy_s = 0.0
 
@@ -170,8 +176,8 @@ class Engine:
                 log.info("separated %d blocks (%.0f s of audio) in the last %d s; busy %.0f%%", st["blocks"], st["audio_s"], every, 100 * st["busy_s"] / every)
                 self.stems.stats = {"blocks": 0, "audio_s": 0.0, "busy_s": 0.0}
             if self.served:
-                log.info("served %d windows (%.0f s of audio) in the last %d s; model busy %.0f%% of the time", self.served, self.audio_s, every, 100 * self.busy_s / every)
-                self.served, self.audio_s, self.busy_s = 0, 0.0, 0.0
+                log.info("served %d windows (%.0f s of audio, %d from the separated voice) in the last %d s; model busy %.0f%% of the time", self.served, self.audio_s, self.from_voice, every, 100 * self.busy_s / every)
+                self.served, self.audio_s, self.busy_s, self.from_voice = 0, 0.0, 0.0, 0
 
     def status(self):
         if not self.loaded.is_set():
@@ -208,6 +214,48 @@ def maybe_dump(store, stream):
             w.setframerate(48000)
             w.writeframes(pcm.tobytes())
     log.info("saved 30 s of stems from %.1f s to %s/%s-*.wav", t0, DUMP_DIR, tag)
+
+
+async def transcribe_job(engine, msg, send):
+    t_wait = time.perf_counter()
+    try:
+        samples = pcm16_to_float32(msg["pcm16"])
+        offset = float(msg.get("offset") or 0)
+        voice = await voice_stem(engine, msg.get("stream"), offset, len(samples))
+        t0 = time.perf_counter()
+        words, text = await engine.transcribe(samples if voice is None else voice, offset)
+        engine.from_voice += voice is not None
+        reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text, "source": "mix" if voice is None else "vocals"}
+    except Exception as e:
+        log.exception("transcribe failed")
+        t0 = time.perf_counter()
+        reply = {"type": "transcribed", "id": msg.get("id"), "error": str(e)}
+    # processingMs is the model's time only (the extension sizes its delay from it).
+    reply.update(processingMs=round((time.perf_counter() - t0) * 1000), waitMs=round((t0 - t_wait) * 1000), model=engine.model_name, engine="companion", device=engine.device)
+    try:
+        await send(reply)
+    except websockets.ConnectionClosed:
+        pass
+
+
+async def voice_stem(engine, stream, offset, n):
+    """The separated voice for n samples (16 kHz) from `offset`, as mono 16 kHz,
+    waiting if that stretch is still being separated; else None. A window far
+    ahead of the playhead can wait longer than one about to be heard."""
+    if ASR_INPUT != "vocals" or not engine.stems or not stream:
+        return None
+    t0, t1 = offset, offset + n / SR
+    ph = engine.stems.streams.get(stream, {}).get("playhead")
+    wait = STEM_WAIT_FAR_S if ph is not None and t0 - ph > FAR_AHEAD_S else STEM_WAIT_S
+    deadline = time.monotonic() + wait
+    while True:
+        got = engine.stems.get(stream, t0, t1)
+        if got is not None:
+            vocals = got[0].mean(axis=0, keepdims=True)
+            return resample(vocals, n)[0]
+        if not engine.stems.received(stream, t0, t1) or time.monotonic() > deadline:
+            return None
+        await asyncio.sleep(0.05)
 
 
 def pcm16_to_float32(b64):
@@ -249,6 +297,7 @@ async def handle(ws, engine):
 
     announcer = None
     owned = set()  # streams this connection sent stem audio for
+    tasks = set()  # transcriptions in flight
     try:
         async for raw in ws:
             try:
@@ -275,21 +324,18 @@ async def handle(ws, engine):
                 if engine.model is None:
                     await send({"type": "transcribed", "id": msg.get("id"), "error": "model not ready"})
                     continue
-                t0 = time.perf_counter()
-                try:
-                    samples = pcm16_to_float32(msg["pcm16"])
-                    words, text = await engine.transcribe(samples, float(msg.get("offset") or 0))
-                    reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text}
-                except Exception as e:
-                    log.exception("transcribe failed")
-                    reply = {"type": "transcribed", "id": msg.get("id"), "error": str(e)}
-                reply.update(processingMs=round((time.perf_counter() - t0) * 1000), model=engine.model_name, engine="companion", device=engine.device)
-                await send(reply)
+                # Its own task: waiting for the voice stem mustn't stop this
+                # loop from reading the audio that stem is made from.
+                task = asyncio.create_task(transcribe_job(engine, msg, send))
+                tasks.add(task)
+                task.add_done_callback(tasks.discard)
     except websockets.ConnectionClosed:
         pass
     finally:
         if announcer:
             announcer.cancel()
+        for task in tasks:
+            task.cancel()
         for stream in owned:
             engine.stem_owners.pop(stream, None)
             if engine.stems:
@@ -314,6 +360,7 @@ async def check(args):
 
 
 async def main():
+    global ASR_INPUT
     p = argparse.ArgumentParser(description="Clean Ears companion app")
     p.add_argument("--model", default="small.en", choices=["tiny.en", "base.en", "small.en"])
     p.add_argument("--device", default="auto", choices=["auto", "mps", "cpu"])
@@ -321,6 +368,7 @@ async def main():
     p.add_argument("--reset-pairing", action="store_true", help="forget the paired extension")
     p.add_argument("--allow-any-extension", action="store_true", help="skip pairing (development)")
     p.add_argument("--check", action="store_true", help="download the model, time one pass, and exit")
+    p.add_argument("--asr-input", default=ASR_INPUT, choices=["vocals", "mix"], help="transcribe the separated voice (default) or the full mix")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
@@ -328,6 +376,7 @@ async def main():
         logging.getLogger(noisy).setLevel(logging.WARNING)
     if args.check:
         return await check(args)
+    ASR_INPUT = args.asr_input
     cfg = load_config()
     if args.reset_pairing:
         cfg.pop("pairedOrigin", None)

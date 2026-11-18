@@ -331,8 +331,29 @@ extension sends it to a local companion app that runs the heavy models.
       burst was all separated within 4.2 s, and on speech alone the
       background stem was 41 dB quieter than the voice. Debugging:
       `CLEAN_EARS_DUMP_STEMS=dir companion/start.sh` saves 30 s of stems as WAV.
-- [ ] 4.3 Feed the vocal stem to ASR; check that transcription improves on
+- [x] 4.3 Feed the vocal stem to ASR; check that transcription improves on
       videos with music (word error rate on 5 test clips).
+      *Result:* the companion now transcribes the separated voice for any
+      stretch that's been separated, else the full mix (`--asr-input mix`
+      turns it off). A window more than 12 s ahead of the playhead waits up
+      to 8 s for its stretch to be separated; one about to be heard waits at
+      most 1 s. Transcriptions run as their own tasks so waiting never holds
+      up the incoming audio (a first version deadlocked on that in testing). Test: 5 clips, each about a minute
+      of macOS speech with an exact script (5 voices) over a different CC0
+      track from Wikimedia Commons, at three music levels
+      ([companion/tests/music_asr_bench.py](companion/tests/music_asr_bench.py)),
+      Whisper small.en:
+
+      | Music vs voice | Word errors: mix → voice stem | Swears found: mix → voice stem |
+      |---|---|---|
+      | 5 dB quieter | 1.1% → 1.7% | 13/14 → **14/14** |
+      | equal | 5.6% → **2.6%** | 12/14 → **14/14** |
+      | 5 dB louder | 18.1% → **11.4%** | 11/14 → **14/14** |
+
+      The voice stem found every swear at every level. Word errors are a
+      little higher with quiet music (separation adds slight artifacts), much
+      lower when music is loud. Synthetic voices are cleaner than real ones;
+      the real-video check is in [TESTING.md](TESTING.md).
 - [ ] 4.4 Keep both stems time-aligned for the mixer (step 12).
 
 ## 5. WhisperX ASR + Silero VAD → alignment (word timings)

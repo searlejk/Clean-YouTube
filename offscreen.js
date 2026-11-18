@@ -244,7 +244,7 @@ const companion = {
   send(job, msg) {
     this.sent.add(job);
     try {
-      this.ws.send(JSON.stringify({ type: 'transcribe', id: job, offset: msg.offset, pcm16: msg.pcm16 }));
+      this.ws.send(JSON.stringify({ type: 'transcribe', id: job, offset: msg.offset, stream: msg.stream, pcm16: msg.pcm16 }));
     } catch {
       this.sent.delete(job);
       toWorker(job, msg);

@@ -14,4 +14,5 @@
 | 11/18/2026 | Roadmap step 2.3: companion install script with self-test, start-at-login option, companion status in the popup; the built-in model no longer loads while the companion runs, and live streams use the companion too; tested on real YouTube in Chrome; started a hand-testing checklist | 0.3 |
 | 11/18/2026 | Lifetime "words blocked" total and "days profanity free" in the popup; roadmap step 4.1: voice/music separation in the companion (UVR MDX-Net, 10 s of audio in 0.7 s on the Mac GPU), measured speed and quality | 0.2 |
 | 11/18/2026 | Roadmap step 4.2: full-quality lookahead audio sent to the companion, which separates voice and background ahead of playback; tested the audio path against ffmpeg and the separation offline and through the companion | 0.25 |
-| **Total** | | **9.75** |
+| 11/18/2026 | Roadmap step 4.3: the companion transcribes the separated voice; built a 5-clip test (speech over CC0 music at three loudness levels): every swear found with the voice stem vs 11–13 of 14 from the mix, word errors down from 18% to 11% under loud music | 0.3 |
+| **Total** | | **10.05** |

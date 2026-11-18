@@ -185,6 +185,11 @@ class StemStore:
                 merged.append([a, b])
         return [[round(a, 3), round(b, 3)] for a, b in merged]
 
+    def received(self, stream, t0, t1):
+        """Has the audio for [t0, t1) arrived (separated or not)?"""
+        st = self.streams.get(stream)
+        return bool(st) and any(r.start <= t0 + JOIN and r.end_time() >= t1 - JOIN for r in st["runs"])
+
     def get(self, stream, t0, t1):
         """Stems covering [t0, t1) at the stream's rate, or None if not all ready."""
         st = self.streams.get(stream)
