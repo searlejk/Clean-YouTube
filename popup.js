@@ -92,6 +92,10 @@ async function init() {
   pollStatus();
   setInterval(pollStatus, 1000);
   watchCompanion();
+  showStats();
+  chrome.storage.onChanged.addListener((c, area) => {
+    if (area === 'local' && (c.blockedTotal || c.installedAt)) showStats();
+  });
 }
 
 // The companion app (roadmap step 2.3): ask it directly whether it's running,
@@ -136,6 +140,21 @@ function watchCompanion() {
 }
 
 let liveDelay = null;
+
+// Lifetime stats: words blocked since installing, and how many calendar days
+// Clean Ears has been installed (counting today as day 1).
+async function showStats() {
+  const { blockedTotal = 0, installedAt = Date.now() } = await chrome.storage.local.get(['blockedTotal', 'installedAt']);
+  $('blocked-total').textContent = blockedTotal.toLocaleString();
+  $('blocked-label').textContent = blockedTotal === 1 ? 'word blocked' : 'words blocked';
+  const day = (t) => {
+    const d = new Date(t);
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+  };
+  const days = Math.max(1, day(Date.now()) - day(installedAt) + 1);
+  $('days-free').textContent = days.toLocaleString();
+  $('days-label').textContent = days === 1 ? 'day profanity free' : 'days profanity free';
+}
 
 function setStatus(kind, text, detail = '') {
   $('status-dot').className = 'dot ' + kind;

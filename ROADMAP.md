@@ -299,9 +299,20 @@ extension sends it to a local companion app that runs the heavy models.
 
 ## 4. Source separation (MDX-Net small / Spleeter)
 
-- [ ] 4.1 Pick a model (UVR MDX-Net small / Demucs / Spleeter 2-stem) for
+- [x] 4.1 Pick a model (UVR MDX-Net small / Demucs / Spleeter 2-stem) for
       the companion; measure speed on this Mac.
       *Done when:* separating 10 s of audio takes < 1 s on this Mac.
+      *Result:* **Kim_Vocal_2** (UVR MDX-Net, ONNX, 67 MB) via onnxruntime +
+      numpy STFT, no PyTorch ([companion/separation.py](companion/separation.py)).
+      10 s of 44.1 kHz stereo audio in **705 ms** on the M4 (CoreML MLProgram,
+      batch size fixed to 1 so the whole graph runs in CoreML; left open, 27
+      of 173 steps fell back to the CPU and it took 3.2 s; CPU-only 6.8 s).
+      UVR-MDX-NET-Voc_FT was the same speed and quality. On speech mixed with
+      synthetic music at 0 dB, the vocal stem scored 23.4 dB SDR against the
+      clean speech (the mix: 0.4 dB). Whisper already copes with that
+      synthetic music (small.en 8.2% word errors on the mix), so the real
+      ASR benefit has to be measured on real music in 4.3. Benchmarks:
+      `companion/tests/word_timing.py`, `companion/tests/separation_bench.py`.
 - [ ] 4.2 Run it on the lookahead audio; produce vocal and background stems.
 - [ ] 4.3 Feed the vocal stem to ASR; check that transcription improves on
       videos with music (word error rate on 5 test clips).

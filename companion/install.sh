@@ -25,6 +25,11 @@ echo "Installing packages…"
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r requirements.txt
 
+echo "Downloading the voice-separation model (Kim_Vocal_2, ~67 MB)…"
+mkdir -p models
+[ -s models/Kim_Vocal_2.onnx ] || curl -fsSL -o models/Kim_Vocal_2.onnx \
+  https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/Kim_Vocal_2.onnx
+
 echo "Downloading and checking the $MODEL speech model…"
 .venv/bin/python server.py --check --model "$MODEL"
 

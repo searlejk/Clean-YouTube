@@ -9,6 +9,16 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.6.0 · lifetime stats in the popup
+
+- [ ] **Words blocked total.** Open the popup: the first box shows
+      *N words blocked*. Play a video with swearing; each swear that's bleeped
+      or silenced adds one, and a phrase ("son of a bitch") adds only one.
+      The number updates while the popup is open and survives closing Chrome.
+- [ ] **Days profanity free.** The box to its right shows *1 day profanity
+      free* today and goes up by one each calendar day (it counts from when
+      you first loaded 1.6.0).
+
 ## Version 1.5.1 · roadmap step 2.3 (companion setup)
 
 Start the companion first (in Terminal, from the project folder):

@@ -525,6 +525,16 @@
   let intervals = []; // merged future mute windows, AudioContext time
   let history = []; // recent windows, used to count each word once
 
+  // Lifetime "words blocked" total (shown in the popup). Each match counts
+  // once, so a phrase like "son of a bitch" is one.
+  function reportBlocked() {
+    try {
+      if (chrome.runtime?.id) chrome.runtime.sendMessage({ type: 'pf:blocked', count: 1 }).catch(() => {});
+    } catch {
+      // Extension reloaded; this page's copy can't report any more.
+    }
+  }
+
   function addInterval(s, e, match) {
     const now = ctx.currentTime;
     history = history.filter((h) => h.e > now - 15);
@@ -547,6 +557,7 @@
         setTimeout(() => growDelayIfNeeded(true), 0);
       }
       state.caught++;
+      reportBlocked();
       state.recent.unshift({ word: match.text, rule: match.rule, late: s < now, at: Date.now() });
       state.recent.length = Math.min(state.recent.length, 10);
     }
