@@ -9,6 +9,24 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.7.0 · roadmap step 4.2 (voice/music separation)
+
+Start the companion so it saves a sample of what it separates:
+
+```sh
+CLEAN_EARS_DUMP_STEMS=~/Desktop/clean-ears-stems companion/start.sh
+```
+
+- [ ] **Stems keep up.** Play a YouTube video that has music under the
+      speech (a vlog, a trailer) for a minute. The companion's Terminal window
+      prints a line like *separated N blocks (… s of audio) in the last 60 s*.
+- [ ] **Listen to the stems (optional).** After ~30 s of playback, the folder
+      `~/Desktop/clean-ears-stems` has `01-vocals.wav`, `01-background.wav`
+      and `01-mix.wav`. The vocals file should be mostly voices, the
+      background mostly music and effects.
+- [ ] **Nothing else changed.** Filtering, the no-delay label and swear
+      muting behave as in 1.6.0.
+
 ## Version 1.6.0 · lifetime stats in the popup
 
 - [ ] **Words blocked total.** Open the popup: the first box shows

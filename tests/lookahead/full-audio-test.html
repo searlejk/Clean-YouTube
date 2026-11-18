@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Full-rate audio test (step 4.2)</title>
+<!-- Feeds long.webm through a real MediaSource with the page bridge, asks for
+     full-rate audio, and compares what arrives with ffmpeg's 48 kHz stereo
+     decode (fixtures/long-ref48k.f32). Expected: offsetMs 0, correlation ≈ 1. -->
+<pre id="out">running…</pre>
+<video id="v" muted></video>
+<script src="../../lookahead/webm-opus-demuxer.js"></script>
+<script src="../../lookahead/opus-pcm-decoder.js"></script>
+<script src="../../lookahead/mse-tap.js"></script>
+<script src="../../lookahead/main-bridge.js"></script>
+<script>
+(async () => {
+  const got = [];
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.__cleanEars === 1 && e.data.type === 'pcm48') got.push(e.data);
+  });
+  window.postMessage({ __cleanEars: 1, type: 'fullAudio', on: true }, '*');
+  const ms = new MediaSource();
+  document.getElementById('v').src = URL.createObjectURL(ms);
+  await new Promise((r) => ms.addEventListener('sourceopen', r, { once: true }));
+  const sb = ms.addSourceBuffer('audio/webm; codecs="opus"');
+  const bytes = new Uint8Array(await (await fetch('fixtures/long.webm')).arrayBuffer());
+  for (let i = 0; i < bytes.length; i += 65536) {
+    sb.appendBuffer(bytes.subarray(i, i + 65536));
+    await new Promise((r) => sb.addEventListener('updateend', r, { once: true }));
+  }
+  await new Promise((r) => setTimeout(r, 3000)); // let the decoder and batches flush
+  const ref = new Float32Array(await (await fetch('fixtures/long-ref48k.f32')).arrayBuffer()); // interleaved stereo
+  got.sort((a, b) => a.time - b.time);
+  let gaps = 0;
+  for (let i = 1; i < got.length; i++) if (Math.abs(got[i - 1].time + got[i - 1].pcm.length / got[i - 1].channels / got[i - 1].rate - got[i].time) > 0.002) gaps++;
+  // Left channel of what arrived, placed by its media time.
+  const total = Math.round((got.at(-1).time + got.at(-1).pcm.length / 2 / 48000) * 48000);
+  const left = new Float32Array(total);
+  for (const m of got) {
+    const at = Math.round(m.time * 48000);
+    for (let i = 0; i < m.pcm.length / 2; i++) if (at + i >= 0 && at + i < total) left[at + i] = m.pcm[2 * i] / 32768;
+  }
+  const refL = new Float32Array(ref.length / 2);
+  for (let i = 0; i < refL.length; i++) refL[i] = ref[2 * i];
+  // Best offset within ±50 ms over a 10 s stretch.
+  const from = 48000 * 5, len = 48000 * 10;
+  let best = { lag: 0, c: -1 };
+  for (let lag = -2400; lag <= 2400; lag++) {
+    let xy = 0, xx = 0, yy = 0;
+    for (let i = from; i < from + len; i += 4) {
+      const x = left[i], y = refL[i + lag] || 0;
+      xy += x * y; xx += x * x; yy += y * y;
+    }
+    const c = xy / Math.sqrt(xx * yy + 1e-12);
+    if (c > best.c) best = { lag, c };
+  }
+  const result = { messages: got.length, rate: got[0]?.rate, channels: got[0]?.channels, seconds: +(total / 48000).toFixed(2), gaps, offsetMs: +(best.lag / 48).toFixed(3), correlation: +best.c.toFixed(4) };
+  document.getElementById('out').textContent = JSON.stringify(result, null, 2);
+  window.__result = result;
+})();
+</script>

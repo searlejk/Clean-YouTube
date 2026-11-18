@@ -92,3 +92,19 @@ storage in `localStorage`, so play `harness.html?v=somevideo#cleanears-silent-te
 for a while, then load it again with an extra query parameter (a change after
 `#` alone doesn't reload the page) and play: `H.diag().modeLog` should start
 with `lookahead` at 0.
+
+## Step 4.2
+
+**Full-rate audio (browser):** the page bridge's 48 kHz stereo output for
+the companion's voice separation, checked against ffmpeg.
+
+```bash
+ffmpeg -i tests/lookahead/fixtures/long.webm -ac 2 -ar 48000 -f f32le tests/lookahead/fixtures/long-ref48k.f32
+python3 -m http.server 8000
+```
+
+Open http://localhost:8000/tests/lookahead/full-audio-test.html. Expected:
+`gaps: 0`, `offsetMs: 0`, `correlation` ≈ 1 (measured: 1.0000 over 92 s).
+
+**Stem store (companion):** `companion/.venv/bin/python companion/tests/test_stems.py OUT_DIR`
+(after `word_timing.py` and `separation_bench.py` have written OUT_DIR).

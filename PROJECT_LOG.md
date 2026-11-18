@@ -13,4 +13,5 @@
 | 11/18/2026 | Roadmap step 2.2: built the companion app (Whisper small on the Mac GPU over a local WebSocket, with pairing), connected the extension to it with fallback to the built-in model, measured word-timing accuracy; tested on real YouTube in Chrome including quitting and restarting the companion | 0.2 |
 | 11/18/2026 | Roadmap step 2.3: companion install script with self-test, start-at-login option, companion status in the popup; the built-in model no longer loads while the companion runs, and live streams use the companion too; tested on real YouTube in Chrome; started a hand-testing checklist | 0.3 |
 | 11/18/2026 | Lifetime "words blocked" total and "days profanity free" in the popup; roadmap step 4.1: voice/music separation in the companion (UVR MDX-Net, 10 s of audio in 0.7 s on the Mac GPU), measured speed and quality | 0.2 |
-| **Total** | | **9.5** |
+| 11/18/2026 | Roadmap step 4.2: full-quality lookahead audio sent to the companion, which separates voice and background ahead of playback; tested the audio path against ffmpeg and the separation offline and through the companion | 0.25 |
+| **Total** | | **9.75** |

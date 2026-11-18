@@ -7,6 +7,9 @@
 //
 // onPcm({ time, samples }) — `time` is the media time (seconds) of samples[0];
 // `samples` is a Float32Array at 16 kHz.
+// onFullPcm({ time, rate, planes }) (optional) — the same audio at the
+// decoder's own rate (48 kHz), one Float32Array per channel, for voice
+// separation (roadmap step 4.2).
 //
 // Timestamps: Chrome's AudioDecoder ignores jumps in input timestamps and keeps
 // counting from where it was (after a seek from 35.8 s to 45.0 s its output was
@@ -52,8 +55,9 @@
   }
 
   class OpusPcmDecoder {
-    constructor({ onPcm, onError } = {}) {
+    constructor({ onPcm, onFullPcm, onError } = {}) {
       this.onPcm = onPcm || (() => {});
+      this.onFullPcm = onFullPcm || null; // checked per packet, so it can be set later
       this.onError = onError || ((e) => console.warn('[OpusPcmDecoder]', e));
       this.decoder = null;
       this.config = null;
@@ -128,10 +132,12 @@
         const n = audio.numberOfFrames;
         const ch = audio.numberOfChannels;
         const mono = new Float32Array(n);
-        const plane = new Float32Array(n);
+        const planes = [];
         for (let c = 0; c < ch; c++) {
+          const plane = new Float32Array(n);
           audio.copyTo(plane, { planeIndex: c, format: 'f32-planar' });
           for (let i = 0; i < n; i++) mono[i] += plane[i] / ch;
+          planes.push(plane);
         }
         const rate = audio.sampleRate;
         const packet = this.pending.shift();
@@ -149,6 +155,7 @@
           }
         }
         this.nextInputTime = start + n / rate;
+        if (this.onFullPcm) this.onFullPcm({ time: start, rate, planes });
         this.downsample(mono, start, rate);
       } finally {
         audio.close();

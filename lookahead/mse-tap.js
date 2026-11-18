@@ -18,9 +18,11 @@
 (function (root) {
   let installed = null;
 
-  function install({ onStream, onPcm, timeline: keepTimeline = true } = {}) {
+  // onFullPcm(stream, { time, rate, planes }) gets the decoded audio at full
+  // rate too (roadmap step 4.2); tap.onFullPcm can also be set later.
+  function install({ onStream, onPcm, onFullPcm, timeline: keepTimeline = true } = {}) {
     if (installed) return installed;
-    const tap = { streams: [], onStream: onStream || (() => {}), onPcm: onPcm || null };
+    const tap = { streams: [], onStream: onStream || (() => {}), onPcm: onPcm || null, onFullPcm: onFullPcm || null };
     const urlOf = new WeakMap(); // MediaSource -> blob URL
 
     const origCreateURL = URL.createObjectURL;
@@ -41,6 +43,9 @@
           onPcm: (c) => {
             if (timeline) timeline.add(c);
             if (tap.onPcm) tap.onPcm(stream, c);
+          },
+          onFullPcm: (c) => {
+            if (tap.onFullPcm) tap.onFullPcm(stream, c);
           },
         });
         const demuxer = new WebmOpusDemuxer({

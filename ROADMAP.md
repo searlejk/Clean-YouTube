@@ -313,7 +313,24 @@ extension sends it to a local companion app that runs the heavy models.
       synthetic music (small.en 8.2% word errors on the mix), so the real
       ASR benefit has to be measured on real music in 4.3. Benchmarks:
       `companion/tests/word_timing.py`, `companion/tests/separation_bench.py`.
-- [ ] 4.2 Run it on the lookahead audio; produce vocal and background stems.
+- [~] 4.2 Run it on the lookahead audio; produce vocal and background stems.
+      *Built (v1.7.0), awaiting the hand check on real YouTube in
+      [TESTING.md](TESTING.md):* while the companion runs, the page bridge also
+      sends the decoded audio at full quality (48 kHz stereo, ~1 s per
+      message) through the content script and offscreen page. The companion
+      keeps it per video as continuous runs (a seek starts a new one) and
+      separates ~10.4 s blocks with 0.5 s of real audio on each side
+      ([companion/stems.py](companion/stems.py)), nearest the playhead first,
+      on its own thread so transcription never waits. Stems are kept from
+      30 s behind the playhead; it reports which stretches are ready.
+      Checks: the bridge's full-rate audio matches ffmpeg exactly (92 s, no
+      gaps, 0 ms offset, correlation 1.000); offline, 33 s of speech + music
+      separated 9× faster than real time with vocal SDR 23.2 dB, voice +
+      background = the original (float16 rounding), block seams within 4–6%
+      of a one-pass separation; through the companion's WebSocket, a 40 s
+      burst was all separated within 4.2 s, and on speech alone the
+      background stem was 41 dB quieter than the voice. Debugging:
+      `CLEAN_EARS_DUMP_STEMS=dir companion/start.sh` saves 30 s of stems as WAV.
 - [ ] 4.3 Feed the vocal stem to ASR; check that transcription improves on
       videos with music (word error rate on 5 test clips).
 - [ ] 4.4 Keep both stems time-aligned for the mixer (step 12).

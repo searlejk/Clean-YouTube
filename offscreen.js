@@ -69,6 +69,13 @@ chrome.runtime.onConnect.addListener((port) => {
         ensureWorker(session);
         worker.postMessage({ type: 'audio', session, samples }, [samples.buffer]);
       }
+    } else if (msg.type === 'stemAudio' || msg.type === 'stemPlayhead') {
+      // Voice separation (roadmap step 4.2) runs only in the companion.
+      if (!companion.ready) return;
+      stemStreams.set(msg.stream, session);
+      companion.forward(msg.type === 'stemAudio'
+        ? { type: 'stem_audio', stream: msg.stream, time: msg.time, rate: msg.rate, channels: msg.channels, pcm16: msg.pcm16 }
+        : { type: 'stem_playhead', stream: msg.stream, time: msg.time });
     } else if (msg.type === 'transcribe') {
       const job = nextJob++;
       jobs.set(job, { session, id: msg.id, msg });
@@ -95,6 +102,11 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => {
     ports.delete(session);
     configs.delete(session);
+    for (const [stream, s] of stemStreams) {
+      if (s !== session) continue;
+      stemStreams.delete(stream);
+      companion.ready && companion.forward({ type: 'stem_close', stream });
+    }
     configured.delete(session);
     streams.delete(session);
     if (ports.size === 0) companion.stop();
@@ -108,6 +120,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
 // Sessions whose built-in model setup is held back while the companion runs.
 const configs = new Map(); // session -> last config message
+const stemStreams = new Map(); // stream (blob URL) -> session, for stem status replies
 const configured = new Set(); // sessions whose config the worker has seen
 
 function ensureWorker(session) {
@@ -185,6 +198,9 @@ const companion = {
         this.ready = m.state === 'ready';
         if (!this.ready && m.state !== 'loading') for (const session of configs.keys()) ensureWorker(session);
         this.broadcast();
+      } else if (m.type === 'stems') {
+        const port = ports.get(stemStreams.get(m.stream));
+        if (port) safePost(port, m);
       } else if (m.type === 'transcribed') {
         this.sent.delete(m.id);
         const job = jobs.get(m.id);
@@ -217,6 +233,13 @@ const companion = {
       this.broadcast();
       this.retry();
     };
+  },
+  forward(msg) {
+    try {
+      this.ws.send(JSON.stringify(msg));
+    } catch {
+      // closed; onclose handles the rest
+    }
   },
   send(job, msg) {
     this.sent.add(job);

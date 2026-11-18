@@ -97,6 +97,7 @@
       if (port) port.postMessage({ type: 'config', model: settings.model });
     }
     applySettings(false, prev);
+    updateFullAudio();
   });
 
   function applySettings(initial, prev = {}) {
@@ -433,6 +434,7 @@
         transcribeJobs.clear();
         state.engine = 'disconnected';
         state.companion = null;
+        updateFullAudio();
         connLog.push({ at: Math.round(performance.now()), event: 'disconnected', error: chrome.runtime.lastError?.message });
         updateReadyGate();
         updateBadges();
@@ -464,9 +466,15 @@
       }
       return;
     }
+    if (msg.type === 'stems') {
+      const look = looks.get(msg.stream);
+      if (look) look.stems = msg.ranges || [];
+      return;
+    }
     if (msg.type === 'companion') {
       const wasReady = state.companion?.state === 'ready';
       state.companion = msg;
+      updateFullAudio();
       if (wasReady !== (msg.state === 'ready')) {
         storedNeed = null; // different engine, different speed
         loadStoredNeed();
@@ -1247,6 +1255,12 @@
 
   // Lookahead can run on the companion app even while the in-browser model
   // is still loading.
+  // Seconds of voice/background stems the companion has ready past `t`.
+  function stemsAhead(look, t) {
+    for (const [a, b] of look.stems || []) if (a <= t + 0.05 && t <= b) return +(b - t).toFixed(2);
+    return 0;
+  }
+
   function transcribeReady() {
     return engineState() === 'ready';
   }
@@ -1293,6 +1307,32 @@
     }
     return look;
   }
+
+  // Full-quality lookahead audio for the companion's voice separation
+  // (roadmap step 4.2). The page bridge only sends it while asked to, since
+  // nothing else needs it.
+  let fullAudioOn = false;
+  function updateFullAudio() {
+    const want = !!(settings.enabled && settings.lookahead && port && state.companion?.state === 'ready' && state.companion.stems);
+    if (want === fullAudioOn) return;
+    fullAudioOn = want;
+    window.postMessage({ __cleanEars: 1, type: 'fullAudio', on: want }, '*');
+  }
+
+  function int16ToBase64(pcm) {
+    const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  window.addEventListener('message', (e) => {
+    const m = e.data;
+    if (e.source !== window || !m || m.__cleanEars !== 1 || m.type !== 'pcm48') return;
+    if (!fullAudioOn || !port || !(m.pcm instanceof Int16Array)) return;
+    if (videoForSrc(m.src)?.mediaKeys) return;
+    port.postMessage({ type: 'stemAudio', stream: m.src, time: m.time, rate: m.rate, channels: m.channels, pcm16: int16ToBase64(m.pcm) });
+  });
 
   window.addEventListener('message', (e) => {
     const m = e.data;
@@ -1504,6 +1544,10 @@
       saveTranscript(look);
     }
     look.sync.notePlayhead(ctx.currentTime, v.currentTime, { paused: v.paused || v.seeking, rate: v.playbackRate });
+    if (fullAudioOn && port && performance.now() - (look.lastStemPlayhead || 0) > 2000) {
+      look.lastStemPlayhead = performance.now();
+      port.postMessage({ type: 'stemPlayhead', stream: look.src, time: v.currentTime });
+    }
     if (v.paused || holding) return;
 
     if (mode === 'lookahead' && lookaheadBlocked(v)) {
@@ -1547,6 +1591,9 @@
         connLog,
         companion: state.companion || null,
         lastEngine: state.lastEngine || null,
+        fullAudio: fullAudioOn,
+        stems: look ? look.stems || [] : [],
+        stemsAhead: look && v ? stemsAhead(look, v.currentTime) : null,
         heard: state.lastText || '', // last delay-mode transcript text
         passMs: state.processingMs ? Math.round(state.processingMs) : null,
         live: v ? isLive(v) : null,

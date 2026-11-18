@@ -36,6 +36,8 @@ from websockets.asyncio.server import serve
 from websockets.http11 import Response
 from websockets.datastructures import Headers
 
+from stems import StemStore
+
 PROTOCOL = 1
 SR = 16000
 CONFIG = Path.home() / "Library" / "Application Support" / "CleanEars" / "companion.json"
@@ -66,6 +68,11 @@ class Engine:
         self.error = None
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.loaded = asyncio.Event()
+        # Voice separation (roadmap step 4.2) gets its own thread so it never
+        # holds up transcription.
+        self.sep_pool = ThreadPoolExecutor(max_workers=1)
+        self.stems = None  # StemStore once the separation model is loaded
+        self.stem_owners = {}  # stream -> send function of the tab's connection
         self.served = 0  # windows since the last stats line
         self.audio_s = 0.0
         self.busy_s = 0.0
@@ -81,11 +88,21 @@ class Engine:
                 # Warm up (the first pass compiles GPU kernels).
                 list(m.transcribe(np.zeros(SR, np.float32), language="en", beam_size=1)[0])
                 self.model, self.device = m, dev
-                return
+                break
             except Exception as e:  # MPS is experimental in ctranslate2; fall back to CPU
                 last = e
                 log.warning("could not use %s: %s", dev, e)
-        raise RuntimeError(f"could not load {self.model_name}: {last}")
+        else:
+            raise RuntimeError(f"could not load {self.model_name}: {last}")
+        try:
+            from separation import Separator
+
+            sep = Separator("Kim_Vocal_2")
+            sep.separate(np.zeros((2, 44100), np.float32))  # warm-up (CoreML compiles on first run)
+            self.stems = StemStore(sep)
+            log.info("voice separation ready (%s, %s)", sep.name, sep.provider)
+        except Exception as e:
+            log.warning("voice separation off: %s", e)
 
     async def load(self):
         try:
@@ -121,9 +138,37 @@ class Engine:
         self.busy_s += time.perf_counter() - t
         return out
 
+    async def separate_forever(self):
+        """Work through pending stem blocks, nearest to each playhead first."""
+        await self.loaded.wait()
+        loop = asyncio.get_running_loop()
+        while True:
+            job, run = self.stems.next_job() if self.stems else (None, None)
+            if job is None:
+                await asyncio.sleep(0.05)
+                continue
+            try:
+                stream = self.stems.finish(await loop.run_in_executor(self.sep_pool, job))
+            except Exception:
+                log.exception("separation failed")
+                self.stems.fail(run)
+                await asyncio.sleep(0.5)
+                continue
+            maybe_dump(self.stems, stream)
+            send = self.stem_owners.get(stream)
+            if send:
+                try:
+                    await send({"type": "stems", "stream": stream, "ranges": self.stems.ranges(stream)})
+                except Exception:
+                    pass
+
     async def report(self, every=60):
         while True:
             await asyncio.sleep(every)
+            if self.stems and self.stems.stats["blocks"]:
+                st = self.stems.stats
+                log.info("separated %d blocks (%.0f s of audio) in the last %d s; busy %.0f%%", st["blocks"], st["audio_s"], every, 100 * st["busy_s"] / every)
+                self.stems.stats = {"blocks": 0, "audio_s": 0.0, "busy_s": 0.0}
             if self.served:
                 log.info("served %d windows (%.0f s of audio) in the last %d s; model busy %.0f%% of the time", self.served, self.audio_s, every, 100 * self.busy_s / every)
                 self.served, self.audio_s, self.busy_s = 0, 0.0, 0.0
@@ -133,7 +178,36 @@ class Engine:
             return {"type": "status", "state": "loading", "model": self.model_name}
         if self.error:
             return {"type": "status", "state": "error", "model": self.model_name, "message": self.error}
-        return {"type": "status", "state": "ready", "model": self.model_name, "device": self.device}
+        return {"type": "status", "state": "ready", "model": self.model_name, "device": self.device, "stems": self.stems is not None}
+
+
+DUMP_DIR = os.environ.get("CLEAN_EARS_DUMP_STEMS")  # debugging: save the first 30 s of stems as WAV files
+_dumped = set()
+
+
+def maybe_dump(store, stream):
+    if not DUMP_DIR or stream in _dumped:
+        return
+    ranges = store.ranges(stream)
+    if not ranges or ranges[0][1] - ranges[0][0] < 30:
+        return
+    import wave
+
+    _dumped.add(stream)
+    t0 = ranges[0][0]
+    got = store.get(stream, t0, t0 + 30)
+    if got is None:
+        return
+    Path(DUMP_DIR).mkdir(parents=True, exist_ok=True)
+    tag = f"{len(_dumped):02d}"
+    for name, x in zip(("vocals", "background", "mix"), (got[0], got[1], got[0] + got[1])):
+        pcm = (np.clip(x.T, -1, 1) * 32767).astype("<i2")
+        with wave.open(str(Path(DUMP_DIR) / f"{tag}-{name}.wav"), "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(48000)
+            w.writeframes(pcm.tobytes())
+    log.info("saved 30 s of stems from %.1f s to %s/%s-*.wav", t0, DUMP_DIR, tag)
 
 
 def pcm16_to_float32(b64):
@@ -174,6 +248,7 @@ async def handle(ws, engine):
         await send(engine.status())
 
     announcer = None
+    owned = set()  # streams this connection sent stem audio for
     try:
         async for raw in ws:
             try:
@@ -185,6 +260,17 @@ async def handle(ws, engine):
                 await send({**engine.status(), "protocol": PROTOCOL})
                 if not engine.loaded.is_set() and announcer is None:
                     announcer = asyncio.create_task(announce_when_loaded())
+            elif kind == "stem_audio" and engine.stems:
+                ch = int(msg.get("channels") or 2)
+                pcm = np.frombuffer(base64.b64decode(msg["pcm16"]), dtype="<i2").astype(np.float32) / 32768.0
+                pcm = pcm[: len(pcm) // ch * ch].reshape(-1, ch).T
+                engine.stems.add(msg["stream"], float(msg["time"]), int(msg["rate"]), pcm)
+                engine.stem_owners[msg["stream"]] = send
+                owned.add(msg["stream"])
+            elif kind == "stem_playhead" and engine.stems:
+                engine.stems.playhead(msg["stream"], float(msg["time"]))
+            elif kind == "stem_close" and engine.stems:
+                engine.stems.close(msg["stream"])
             elif kind == "transcribe":
                 if engine.model is None:
                     await send({"type": "transcribed", "id": msg.get("id"), "error": "model not ready"})
@@ -204,6 +290,10 @@ async def handle(ws, engine):
     finally:
         if announcer:
             announcer.cancel()
+        for stream in owned:
+            engine.stem_owners.pop(stream, None)
+            if engine.stems:
+                engine.stems.close(stream)
         log.info("extension disconnected")
 
 
@@ -247,6 +337,7 @@ async def main():
     engine = Engine(args.model, args.device)
     asyncio.create_task(engine.load())
     asyncio.create_task(engine.report())
+    asyncio.create_task(engine.separate_forever())
     async with serve(
         lambda ws: handle(ws, engine),
         "127.0.0.1",
