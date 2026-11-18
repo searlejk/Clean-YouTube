@@ -18,4 +18,5 @@
 | 11/18/2026 | Roadmap step 4.4: background clips for each upcoming swear, aligned to the sample for the mixer; built an end-to-end test page (real extension scripts + companion) that found and fixed four problems keeping separation from being used | 0.35 |
 | 11/18/2026 | Roadmap step 5.1: voice activity detection in the companion and pause-aware windows in the extension; measured against fixed windows with the real transcriber (no gain, so left off) | 0.5 |
 | 11/18/2026 | Roadmap step 5.2: forced alignment of word timings in the companion (wav2vec2, the WhisperX approach); word starts within ±50 ms for 98% of words with every Whisper size, up from 2–32% | 0.2 |
-| **Total** | | **11.1** |
+| 11/18/2026 | Roadmap step 5.3: tighter silence around aligned words (60 ms before / 100 ms after instead of 0.25 s each side); every test word still fully silenced, and about 0.16 s muted around each word instead of ~0.8 s | 0.3 |
+| **Total** | | **11.4** |

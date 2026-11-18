@@ -59,7 +59,8 @@
     return forms.some((f) => re.test(f));
   }
 
-  // words: [{ text, start, end }] -> [{ start, end, text, rule }]
+  // words: [{ text, start, end, aligned? }] -> [{ start, end, text, rule, aligned }]
+  // (`aligned`: every word in the match was placed by forced alignment)
   function findMatches(words, compiled) {
     const out = [];
     const norm = words.map((w) => normalizeToken(w.text));
@@ -68,6 +69,7 @@
       end: words[b].end,
       text: words.slice(a, b + 1).map((w) => w.text.trim()).join(' '),
       rule,
+      aligned: words.slice(a, b + 1).every((w) => w.aligned),
     });
 
     for (let i = 0; i < words.length; i++) {

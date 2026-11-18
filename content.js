@@ -29,6 +29,18 @@
     return PF.MODELS[reply.model]?.timestampLag ?? timestampLag();
   }
   const NO_LAG = { start: 0, end: 0 };
+
+  // Silence added around a caught word (step 5.3). Words placed by forced
+  // alignment are accurate to a few ms (all test words covered with 31 ms
+  // before / 65 ms after), so they get a small, fixed cover with headroom;
+  // others keep the "Word cover" setting. Raising the setting above its
+  // default adds the same extra to aligned words too.
+  const ALIGNED_COVER = { before: 0.06, after: 0.1 };
+  function coverFor(match) {
+    if (!match.aligned) return { before: settings.cover, after: settings.cover };
+    const extra = Math.max(0, settings.cover - PF.DEFAULTS.cover);
+    return { before: ALIGNED_COVER.before + extra, after: ALIGNED_COVER.after + extra };
+  }
   const RAMP = 0.008; // short fades avoid clicks
   const MERGE_GAP = 0.05;
 
@@ -467,7 +479,7 @@
         // already on the audio; only Whisper's own times need the bias fix.
         const words = (msg.words || []).map((w) => {
           const l = w.aligned ? NO_LAG : lag;
-          return { text: w.text, start: w.start - l.start, end: w.end - l.end };
+          return { text: w.text, start: w.start - l.start, end: w.end - l.end, aligned: !!w.aligned };
         });
         if (msg.engine === 'companion') state.alignedWords = (state.alignedWords || 0) + (msg.aligned || 0);
         job.resolve({ ...msg, words });
@@ -515,7 +527,6 @@
     });
 
     const delay = currentDelay;
-    const pad = settings.cover;
     let lag = msg.engine ? lagFor(msg) : timestampLag();
     if (msg.engine) {
       // Companion words: aligned ones (step 5.2) are already on the audio.
@@ -524,8 +535,9 @@
       lag = NO_LAG;
     }
     for (const m of PFFilter.findMatches(msg.words, compiled)) {
-      const s = timeOf(m.start - lag.start - pad);
-      const e = timeOf(m.end - lag.end + pad);
+      const pad = coverFor(m);
+      const s = timeOf(m.start - lag.start - pad.before);
+      const e = timeOf(m.end - lag.end + pad.after);
       if (s == null || e == null) continue;
       addInterval(s + delay, e + delay, m);
     }
@@ -1578,11 +1590,10 @@
     const look = lookFor(video);
     if (!look || !ctx) return;
     const t = video.currentTime;
-    const lag = NO_LAG; // lookahead words are already corrected
-    const pad = settings.cover;
     for (const m of PFFilter.findMatches(look.words.between(t - 3, t + 1), compiled)) {
-      const m0 = m.start - lag.start - pad;
-      const m1 = m.end - lag.end + pad;
+      const pad = coverFor(m); // lookahead words are already in true time
+      const m0 = m.start - pad.before;
+      const m1 = m.end + pad.after;
       if (m0 <= t && t < m1) {
         look.scheduled.add(Math.round(m.start * 100) + ':' + m.text);
         addInterval(ctx.currentTime, ctx.currentTime + (m1 - t) / (video.playbackRate || 1) + 0.05, m);
@@ -1615,19 +1626,18 @@
   // Turn upcoming swears in the transcript into mutes, timed by ClockSync.
   function scheduleLookaheadMutes(video, look) {
     const t = video.currentTime;
-    const lag = NO_LAG; // lookahead words are already corrected
-    const pad = settings.cover;
     for (const m of PFFilter.findMatches(look.words.between(t - 2, t + SCHEDULE_AHEAD), compiled)) {
       const key = Math.round(m.start * 100) + ':' + m.text;
       if (look.scheduled.has(key)) continue;
-      const m0 = m.start - lag.start - pad;
-      const m1 = m.end - lag.end + pad;
+      const pad = coverFor(m); // lookahead words are already in true time
+      const m0 = m.start - pad.before;
+      const m1 = m.end + pad.after;
       if (m1 < t) continue;
       const c0 = look.sync.heardAt(m0);
       const c1 = look.sync.heardAt(m1);
       if (c0 == null || c1 == null) continue; // no clock fit yet
       look.scheduled.add(key);
-      if (SILENT_TEST) testLog.mutes.push({ text: m.text, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
+      if (SILENT_TEST) testLog.mutes.push({ text: m.text, aligned: !!m.aligned, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
       addInterval(c0 + currentDelay, c1 + currentDelay, m);
       requestStemClip(look, key, m0 - CLIP_MARGIN, m1 + CLIP_MARGIN);
       updateBadges(); // refresh the "N filtered" count

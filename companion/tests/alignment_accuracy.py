@@ -58,14 +58,27 @@ def score(words):
         c = [x for x in words if norm(x["text"]) == norm(w) and abs(x["start"] - a) < 1.0]
         if c:
             x = min(c, key=lambda x: abs(x["start"] - a)); ds.append(x["start"] - a); de.append(x["end"] - b)
+    late_start.extend(x for x in ds if abs(x) < 0.3)  # >0.3 s off = a different word (transcription error)
+    early_end.extend(-x for x in de if abs(x) < 0.3)
     ds, de = np.abs(np.array(ds)), np.array(de)
     return len(ds), np.median(ds), np.percentile(ds, 95), (ds <= 0.05).mean(), np.percentile(de, 5), np.percentile(de, 95)
 
 al = Aligner()
+late_start, early_end = [], []  # aligned words only, all models and conditions (step 5.3)
 for label, audio in (("clean speech", clean), ("speech + music, voice stem", music_mix())):
     print(f"\n{label}")
     for model in ("tiny.en", "base.en", "small.en"):
         raw, aligned = run(model, audio, al)
         for name, ws in (("whisper", raw), ("aligned", aligned)):
+            if name == "whisper":
+                keep = (len(late_start), len(early_end))
             n, med, p95, within, e5, e95 = score(ws)
+            if name == "whisper":
+                del late_start[keep[0]:], early_end[keep[1]:]
             print(f"  {model:9s} {name:8s} matched {n}/{len(truth)}  start error median {med*1000:4.0f} ms, 95% {p95*1000:4.0f} ms, within ±50 ms {within*100:5.1f}%   end offset 5–95% {e5*1000:+5.0f}…{e95*1000:+5.0f} ms")
+
+# Padding a mute needs so the whole word is covered (step 5.3).
+ls, ee = np.array(late_start), np.array(early_end)
+print("\nAligned words: how much padding covers the whole word")
+for q in (95, 99, 100):
+    print(f"  {q:3d}% of words: before {max(0, np.percentile(ls, q)) * 1000:4.0f} ms, after {max(0, np.percentile(ee, q)) * 1000:4.0f} ms")

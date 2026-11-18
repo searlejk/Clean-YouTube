@@ -413,7 +413,21 @@ extension sends it to a local companion app that runs the heavy models.
       aligns every window; the extension applies its old per-model lag only
       to words that couldn't be aligned. `--no-align` turns it off.
       Tests: `companion/tests/alignment_accuracy.py`.
-- [ ] 5.3 Shrink the "word cover" padding once timings are accurate.
+- [x] 5.3 Shrink the "word cover" padding once timings are accurate.
+      *Result (v1.12.0):* words placed by forced alignment now get a fixed
+      cover of **60 ms before / 100 ms after** instead of 0.25 s each side
+      (plus the old per-model lag). Measured need over all test words, every
+      model, clean and with music: 31 ms before / 65 ms after covers 100%,
+      so the cover is about double that. Words that couldn't be aligned keep
+      the "Word cover" setting; raising the setting above its default adds
+      the same extra to aligned words. The aligned mark is kept through the
+      word timeline, saved transcripts and phrase matches ("son of a bitch"
+      is aligned only if all its words are). Checked
+      ([companion/tests/cover_check.py](companion/tests/cover_check.py)):
+      every word fully silenced with all three models, clean and with music,
+      and the audio muted outside each word fell from 780–930 ms to
+      160–166 ms; the old covers missed one word with base. On the test page
+      all 9 mutes were aligned with exactly 60/100 ms, 5.5–5.9 s early.
 - [x] 5.4 Decide WhisperX proper (companion) vs. an in-browser equivalent
       (Whisper + wav2vec2 ONNX). *Decided in 2.1: WhisperX in the companion.*
 

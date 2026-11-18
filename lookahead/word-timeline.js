@@ -32,7 +32,7 @@
         if (!nearEdge(w)) continue;
         // Overlapping windows can report the same word just across a seam.
         const dupe = kept.some((k) => Math.abs(k.start - w.start) < SEAM && norm(k.text) === norm(w.text));
-        if (!dupe) kept.push({ text: w.text, start: w.start, end: w.end });
+        if (!dupe) kept.push(w.aligned ? { text: w.text, start: w.start, end: w.end, aligned: true } : { text: w.text, start: w.start, end: w.end });
       }
       kept.sort((a, b) => a.start - b.start);
       this.words = kept;

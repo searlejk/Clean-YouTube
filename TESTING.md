@@ -9,6 +9,14 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.12.0 · roadmap step 5.3 (tighter word cover)
+
+- [ ] **Less cut around swears.** With the companion running, the words
+      right before and after a swear are clipped much less than before
+      (about 0.16 s extra in total instead of ~0.8 s).
+- [ ] **Still the whole word.** No start or end of a swear is audible. If
+      one is, raise "Word cover" in the popup a little and note the video.
+
 ## Version 1.11.0 · roadmap step 5.2 (exact word timings)
 
 Re-run `companion/install.sh` once first: it downloads the alignment model
