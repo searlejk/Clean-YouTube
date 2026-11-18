@@ -136,3 +136,10 @@
 {"ts": "2026-11-18T19:01:34+00:00", "event": "answer", "gap_end": "2026-11-18T18:55:50+00:00", "minutes": 0.0}
 {"ts": "2026-11-18T19:02:02+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
 {"ts": "2026-11-18T19:02:06+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T19:02:22+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T19:02:57+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T19:10:40+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "transcript"}
+{"ts": "2026-11-18T19:10:40+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T19:10:41+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T19:11:13+00:00", "event": "stop", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}
+{"ts": "2026-11-18T19:12:25+00:00", "event": "prompt", "session": "6671a843-dac7-4cb2-a455-e8c53d74ac56", "source": "hook"}

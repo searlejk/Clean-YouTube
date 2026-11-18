@@ -9,6 +9,17 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.11.0 · roadmap step 5.2 (exact word timings)
+
+Re-run `companion/install.sh` once first: it downloads the alignment model
+(~378 MB).
+
+- [ ] **Whole words muted, nothing extra.** With the companion running, the
+      start and end of each swear are silenced (no "s…" or "…t" leaking),
+      and neighbouring words aren't clipped more than before.
+- [ ] **Compare (optional).** `companion/start.sh --no-align` uses the old
+      timing method, so you can hear the difference on the same video.
+
 ## Version 1.9.0 · roadmap step 4.4 (background clips for the mixer)
 
 Nothing you can hear changes yet (step 12 will use the clips).

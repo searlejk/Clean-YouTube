@@ -17,4 +17,5 @@
 | 11/18/2026 | Roadmap step 4.3: the companion transcribes the separated voice; built a 5-clip test (speech over CC0 music at three loudness levels): every swear found with the voice stem vs 11–13 of 14 from the mix, word errors down from 18% to 11% under loud music | 0.3 |
 | 11/18/2026 | Roadmap step 4.4: background clips for each upcoming swear, aligned to the sample for the mixer; built an end-to-end test page (real extension scripts + companion) that found and fixed four problems keeping separation from being used | 0.35 |
 | 11/18/2026 | Roadmap step 5.1: voice activity detection in the companion and pause-aware windows in the extension; measured against fixed windows with the real transcriber (no gain, so left off) | 0.5 |
-| **Total** | | **10.9** |
+| 11/18/2026 | Roadmap step 5.2: forced alignment of word timings in the companion (wav2vec2, the WhisperX approach); word starts within ±50 ms for 98% of words with every Whisper size, up from 2–32% | 0.2 |
+| **Total** | | **11.1** |

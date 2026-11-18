@@ -30,6 +30,12 @@ mkdir -p models
 [ -s models/Kim_Vocal_2.onnx ] || curl -fsSL -o models/Kim_Vocal_2.onnx \
   https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/Kim_Vocal_2.onnx
 
+echo "Downloading the word-alignment model (wav2vec2-base-960h, ~378 MB)…"
+W2V=https://huggingface.co/onnx-community/wav2vec2-base-960h-ONNX/resolve/main
+[ -s models/wav2vec2-base-960h.onnx ] || curl -fsSL -o models/wav2vec2-base-960h.onnx $W2V/onnx/model.onnx
+[ -s models/wav2vec2-base-960h.vocab.json ] || curl -fsSL -o models/wav2vec2-base-960h.vocab.json \
+  https://huggingface.co/facebook/wav2vec2-base-960h/resolve/main/vocab.json
+
 echo "Downloading and checking the $MODEL speech model…"
 .venv/bin/python server.py --check --model "$MODEL"
 

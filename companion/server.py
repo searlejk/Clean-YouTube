@@ -77,6 +77,8 @@ class Engine:
         # holds up transcription.
         self.sep_pool = ThreadPoolExecutor(max_workers=1)
         self.stems = None  # StemStore once the separation model is loaded
+        self.aligner = None  # forced alignment of word timings (step 5.2)
+        self.use_align = True
         self.stem_owners = {}  # stream -> send function of the tab's connection
         self.served = 0  # windows since the last stats line
         self.from_voice = 0  # of those, transcribed from the separated voice
@@ -100,6 +102,16 @@ class Engine:
                 log.warning("could not use %s: %s", dev, e)
         else:
             raise RuntimeError(f"could not load {self.model_name}: {last}")
+        if self.use_align:
+            try:
+                from align import Aligner
+
+                al = Aligner()
+                al.emissions(np.zeros(SR, np.float32))  # warm-up
+                self.aligner = al
+                log.info("word alignment ready (wav2vec2, %s)", al.provider)
+            except Exception as e:
+                log.warning("word alignment off: %s", e)
         try:
             from separation import Separator
 
@@ -120,6 +132,15 @@ class Engine:
             log.error("%s", e)
         self.loaded.set()
 
+    def _transcribe_aligned(self, samples, offset):
+        words, text = self._transcribe(samples, offset)
+        if self.aligner is not None and words:
+            try:
+                words = self.aligner.align(samples, offset, words)
+            except Exception as e:
+                log.warning("alignment failed: %s", e)
+        return words, text
+
     def _transcribe(self, samples, offset):
         segs, _ = self.model.transcribe(
             samples,
@@ -138,7 +159,7 @@ class Engine:
 
     async def transcribe(self, samples, offset):
         t = time.perf_counter()
-        out = await asyncio.get_running_loop().run_in_executor(self.pool, self._transcribe, samples, offset)
+        out = await asyncio.get_running_loop().run_in_executor(self.pool, self._transcribe_aligned, samples, offset)
         self.served += 1
         self.audio_s += len(samples) / SR
         self.busy_s += time.perf_counter() - t
@@ -235,7 +256,7 @@ async def transcribe_job(engine, msg, send):
         t0 = time.perf_counter()
         words, text = await engine.transcribe(samples if voice is None else voice, offset)
         engine.from_voice += voice is not None
-        reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text, "source": "mix" if voice is None else "vocals"}
+        reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text, "source": "mix" if voice is None else "vocals", "aligned": sum(1 for w in words if w.get("aligned"))}
     except Exception as e:
         log.exception("transcribe failed")
         t0 = time.perf_counter()
@@ -435,6 +456,7 @@ async def main():
     p.add_argument("--allow-local-test-pages", action="store_true", help="also accept pages served from 127.0.0.1/localhost (development)")
     p.add_argument("--check", action="store_true", help="download the model, time one pass, and exit")
     p.add_argument("--asr-input", default=ASR_INPUT, choices=["vocals", "mix"], help="transcribe the separated voice (default) or the full mix")
+    p.add_argument("--no-align", action="store_true", help="use Whisper's own word times instead of forced alignment")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if os.environ.get("CLEAN_EARS_DEBUG") else logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
@@ -450,6 +472,7 @@ async def main():
         log.info("pairing reset")
 
     engine = Engine(args.model, args.device)
+    engine.use_align = not args.no_align
     asyncio.create_task(engine.load())
     asyncio.create_task(engine.report())
     asyncio.create_task(engine.separate_forever())

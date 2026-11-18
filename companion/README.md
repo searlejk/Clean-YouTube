@@ -31,4 +31,9 @@ tiny.en 0.2 s on CPU.
 - `CLEAN_EARS_DEBUG=1` logs, for every transcription window, whether it used
   the separated voice and why not.
 - Tests: `tests/word_timing.py`, `tests/separation_bench.py`,
-  `tests/test_stems.py`, `tests/test_stem_clips.py`, `tests/music_asr_bench.py`.
+  `tests/test_stems.py`, `tests/test_stem_clips.py`, `tests/music_asr_bench.py`,
+  `tests/vad_windowing_eval.js`, `tests/alignment_accuracy.py`.
+
+Models (in `companion/models`, downloaded by `install.sh`): Kim_Vocal_2
+(voice separation, 67 MB) and wav2vec2-base-960h (word alignment, 378 MB);
+the Whisper models go to the Hugging Face cache.

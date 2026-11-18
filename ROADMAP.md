@@ -394,10 +394,25 @@ extension sends it to a local companion app that runs the heavy models.
       stretches to skip in these clips). The overlap already protects words
       at window edges, so pause cuts stay off. Worth re-testing on real
       videos with long silences, where skipping could save work.
-- [ ] 5.2 Forced alignment with a wav2vec2 CTC model (the WhisperX approach)
+- [x] 5.2 Forced alignment with a wav2vec2 CTC model (the WhisperX approach)
       to replace the hand-measured timestamp lag.
       *Done when:* word starts land within ±50 ms on the waveform-labelled
       test clips, for every model size.
+      *Result:* [companion/align.py](companion/align.py) runs
+      wav2vec2-base-960h (the model WhisperX uses for English; ONNX, 378 MB,
+      no PyTorch) and a numpy Viterbi CTC alignment on each window's audio
+      (the separated voice when available), then moves each edge to where
+      the word's sound begins/fades in the loudness envelope (CTC fires a
+      letter at its peak, so vowel-first words came out ~150 ms late before
+      this). On the exact-timing speech, word starts: median 5 ms off, 95%
+      within 20 ms, **98.4% within ±50 ms for tiny, base and small alike**
+      (the one miss is a transcription error); with real music under it,
+      through separation, 96.7–98.3%. Before: 1.6–31.7% within ±50 ms. Ends
+      land −28…+7 ms (5–95%). Costs ~0.7 s per 12 s window on the CPU
+      (CoreML can't take the model's variable length). The companion now
+      aligns every window; the extension applies its old per-model lag only
+      to words that couldn't be aligned. `--no-align` turns it off.
+      Tests: `companion/tests/alignment_accuracy.py`.
 - [ ] 5.3 Shrink the "word cover" padding once timings are accurate.
 - [x] 5.4 Decide WhisperX proper (companion) vs. an in-browser equivalent
       (Whisper + wav2vec2 ONNX). *Decided in 2.1: WhisperX in the companion.*

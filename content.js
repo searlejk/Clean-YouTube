@@ -463,7 +463,13 @@
         state.lastEngine = msg.engine === 'companion' ? 'companion' : 'browser';
         if (msg.source) state.asrSource[msg.source] = (state.asrSource[msg.source] || 0) + 1;
         const lag = lagFor(msg);
-        const words = (msg.words || []).map((w) => ({ text: w.text, start: w.start - lag.start, end: w.end - lag.end }));
+        // Words the companion placed by forced alignment (step 5.2) are
+        // already on the audio; only Whisper's own times need the bias fix.
+        const words = (msg.words || []).map((w) => {
+          const l = w.aligned ? NO_LAG : lag;
+          return { text: w.text, start: w.start - l.start, end: w.end - l.end };
+        });
+        if (msg.engine === 'companion') state.alignedWords = (state.alignedWords || 0) + (msg.aligned || 0);
         job.resolve({ ...msg, words });
       }
       return;
@@ -510,7 +516,13 @@
 
     const delay = currentDelay;
     const pad = settings.cover;
-    const lag = msg.engine ? lagFor(msg) : timestampLag();
+    let lag = msg.engine ? lagFor(msg) : timestampLag();
+    if (msg.engine) {
+      // Companion words: aligned ones (step 5.2) are already on the audio.
+      const l = lag;
+      msg.words = msg.words.map((w) => (w.aligned ? w : { ...w, start: w.start - l.start, end: w.end - l.end }));
+      lag = NO_LAG;
+    }
     for (const m of PFFilter.findMatches(msg.words, compiled)) {
       const s = timeOf(m.start - lag.start - pad);
       const e = timeOf(m.end - lag.end + pad);
@@ -1708,6 +1720,7 @@
         lastEngine: state.lastEngine || null,
         fullAudio: fullAudioOn,
         asrSource: state.asrSource,
+        alignedWords: state.alignedWords || 0,
         clips: clipStats,
         stems: look ? look.stems || [] : [],
         stemsAhead: look && v ? stemsAhead(look, v.currentTime) : null,
