@@ -217,6 +217,9 @@ async function pollStatus() {
         ? 'Companion app loading…'
         : '';
   const parts = [companion || device];
+  // Voice samples collected for cloning (step 9).
+  const v = st.voices && Object.entries(st.voices);
+  if (v && v.length) parts.push('Voice samples: ' + v.map(([k, x]) => `speaker ${Number(k) + 1} ${Math.round(x.seconds)} s${x.ready ? ' ✓' : ''}`).join(', '));
   if (st.processingMs) parts.push(`${Math.round(st.processingMs)} ms per pass`);
   if (st.headroom != null) parts.push(`${Math.max(0, st.headroom).toFixed(1)} s headroom`);
   if (st.missed) parts.push(`${st.missed} caught too late`);

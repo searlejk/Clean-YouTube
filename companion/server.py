@@ -83,6 +83,16 @@ class Engine:
         self.use_spotter = False  # off by default: measured too many false alarms (see ROADMAP 6)
         self.use_align = True
         self.stem_owners = {}  # stream -> send function of the tab's connection
+        self.saved_profiles = {}  # stream -> when its speaker profiles were last saved
+        # Voice samples per speaker (step 9): transcribed words per stream (with
+        # speakers), the extension's word list, and when samples were last updated/saved.
+        from voices import VoiceCollector
+
+        self.voices = VoiceCollector()
+        self.stream_words = {}
+        self.word_list = []
+        self.voices_updated = {}
+        self.voices_saved = {}
         self.served = 0  # windows since the last stats line
         self.from_voice = 0  # of those, transcribed from the separated voice
         self.audio_s = 0.0
@@ -220,12 +230,49 @@ class Engine:
                 await asyncio.sleep(0.5)
                 continue
             maybe_dump(self.stems, stream)
+            await self.update_voices(stream)
+            if time.monotonic() - self.saved_profiles.get(stream, 0) > 10:
+                self.saved_profiles[stream] = time.monotonic()
+                self.stems.save_profiles(stream)
             send = self.stem_owners.get(stream)
             if send:
                 try:
                     await send({"type": "stems", "stream": stream, "ranges": self.stems.ranges(stream), "speech": self.stems.speech(stream)})
                 except Exception:
                     pass
+
+    async def update_voices(self, stream, force=False):
+        """Re-pick each speaker's clean voice sample (step 9) every few seconds,
+        tell the tab, and save the WAVs for the video now and then."""
+        now = time.monotonic()
+        if not force and now - self.voices_updated.get(stream, 0) < 5:
+            return
+        self.voices_updated[stream] = now
+        st = self.stems.streams.get(stream) if self.stems else None
+        if not st or st.get("diar") is None:
+            return
+        try:
+            self.voices.update(self.stems, stream, self.stream_words.get(stream, []), self.word_list)
+        except Exception:
+            log.exception("voice sample update failed")
+            return
+        status = self.voices.status(stream)
+        send = self.stem_owners.get(stream)
+        if send and status:
+            try:
+                await send({"type": "voices", "stream": stream, "speakers": status})
+            except websockets.ConnectionClosed:
+                pass
+            except Exception:
+                log.exception("could not send voice sample status")
+        video = st.get("video")
+        if video and status and (force or now - self.voices_saved.get(stream, 0) > 30):
+            self.voices_saved[stream] = now
+            from voices import VOICES
+
+            safe = "".join(c for c in str(video) if c.isalnum() or c in "-_")[:64]
+            if safe:
+                self.voices.save(self.stems, stream, VOICES / safe)
 
     async def report(self, every=60):
         while True:
@@ -286,6 +333,12 @@ async def transcribe_job(engine, msg, send):
         diar = engine.stems.streams.get(msg.get("stream"), {}).get("diar") if engine.stems else None
         if diar is not None and words:
             diar.label_words(words)  # "speaker", "speaker_conf" (step 8)
+        if msg.get("stream") and words:
+            # Remember the words so voice samples (step 9) can avoid swears.
+            kept = [w for w in engine.stream_words.get(msg["stream"], []) if not (offset <= w["start"] < offset + len(samples) / SR)]
+            kept += [{"text": w["text"], "start": w["start"], "end": w["end"]} for w in words]
+            engine.stream_words[msg["stream"]] = sorted(kept, key=lambda w: w["start"])[-6000:]
+            await engine.update_voices(msg["stream"])  # new words and speakers: re-pick samples (throttled)
         engine.from_voice += voice is not None
         reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text, "source": "mix" if voice is None else "vocals", "aligned": sum(1 for w in words if w.get("aligned")), "spotted": hits}
     except Exception as e:
@@ -427,13 +480,18 @@ async def handle(ws, engine):
                 pcm = np.frombuffer(base64.b64decode(msg["pcm16"]), dtype="<i2").astype(np.float32) / 32768.0
                 pcm = pcm[: len(pcm) // ch * ch].reshape(-1, ch).T
                 engine.stems.add(msg["stream"], float(msg["time"]), int(msg["rate"]), pcm)
+                if msg.get("video"):
+                    engine.stems.set_video(msg["stream"], msg["video"])
                 engine.stem_owners[msg["stream"]] = send
                 owned.add(msg["stream"])
             elif kind == "stem_playhead" and engine.stems:
                 engine.stems.playhead(msg["stream"], float(msg["time"]))
             elif kind == "stem_close" and engine.stems:
+                await engine.update_voices(msg["stream"], force=True)
+                engine.stems.save_profiles(msg["stream"])
                 engine.stems.close(msg["stream"])
             elif kind == "kws_words":
+                engine.word_list = msg.get("words") or []  # also keeps swears out of voice samples (step 9)
                 if engine.spotter is not None:
                     engine.spotter.set_words(msg.get("words") or [])
                     log.info("swear spotting: %d patterns from the word list", len(engine.spotter.patterns))
@@ -460,6 +518,7 @@ async def handle(ws, engine):
         for stream in owned:
             engine.stem_owners.pop(stream, None)
             if engine.stems:
+                engine.stems.save_profiles(stream)
                 engine.stems.close(stream)
         log.info("extension disconnected")
 

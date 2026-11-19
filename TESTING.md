@@ -9,6 +9,17 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.15.0 · roadmap steps 8.2–9 (stable speakers, voice samples)
+
+- [ ] **Same numbers after a reload.** On a two-person video, note who is
+      "speaker 1" in the popup, reload the page and play on: same numbers.
+- [ ] **Voice samples.** After a few minutes of a talk or podcast with the
+      companion running, the popup's status line shows "Voice samples:
+      speaker 1 30 s ✓ …". The files are in
+      `~/Library/Application Support/CleanEars/voices/<video ID>/`; play a
+      `speaker1.wav`: it should be only that person, no swearing, little or
+      no music.
+
 ## Version 1.14.0 · roadmap step 8.1 (who's speaking)
 
 Re-run `companion/install.sh` once (it downloads the 27 MB speaker model).

@@ -21,6 +21,7 @@ edges don't sound different, and the stems are stored by media time.
 """
 
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -119,12 +120,61 @@ class Run:
         self.busy = False
 
 
+PROFILES = Path.home() / "Library" / "Application Support" / "CleanEars" / "speakers"
+MAX_PROFILES = 300  # videos remembered; oldest dropped
+
+
+def _profile_path(video):
+    safe = "".join(c for c in str(video) if c.isalnum() or c in "-_")[:64]
+    return PROFILES / f"{safe}.npz" if safe else None
+
+
+def load_profiles(video):
+    p = _profile_path(video)
+    if not p or not p.exists():
+        return None
+    try:
+        with np.load(p) as z:
+            return {"centroids": z["centroids"], "counts": z["counts"]}
+    except Exception:
+        return None
+
+
+def save_profiles(video, state):
+    p = _profile_path(video)
+    if not p:
+        return
+    PROFILES.mkdir(parents=True, exist_ok=True)
+    np.savez(p, **state)
+    files = sorted(PROFILES.glob("*.npz"), key=lambda f: f.stat().st_mtime)
+    for f in files[:-MAX_PROFILES]:
+        f.unlink(missing_ok=True)
+
+
 class StemStore:
     def __init__(self, separator, embedder=None):
         self.sep = separator
         self.embedder = embedder  # voice fingerprints for speaker labels (step 8)
         self.streams = {}  # stream -> {"runs": [Run], "playhead": float|None}
         self.stats = {"blocks": 0, "audio_s": 0.0, "busy_s": 0.0}
+
+    def set_video(self, stream, video):
+        """Tie a stream to its YouTube video so speaker profiles saved for
+        that video are restored (step 8.2)."""
+        st = self._stream(stream)
+        if st.get("video") == video or not video:
+            return
+        st["video"] = video
+        diar = st.get("diar")
+        if diar is not None:
+            saved = load_profiles(video)
+            if saved:
+                diar.restore(saved)
+
+    def save_profiles(self, stream):
+        st = self.streams.get(stream)
+        if st and st.get("video") and st.get("diar") is not None and st["diar"].centroids:
+            save_profiles(st["video"], st["diar"].state())
 
     def _stream(self, stream):
         st = self.streams.setdefault(stream, {"runs": [], "playhead": None})

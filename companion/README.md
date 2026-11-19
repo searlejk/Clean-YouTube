@@ -20,6 +20,12 @@ built-in model loads and takes over.
 - Only a Chrome extension can connect, and the first one to connect is
   remembered (pairing). To pair a different copy: `companion/start.sh --reset-pairing`.
 - Settings live in `~/Library/Application Support/CleanEars/companion.json`.
+- **What it stores on this Mac:** for each video watched with the companion,
+  the speakers' voice profiles (`speakers/`, a few KB) and short clean voice
+  samples of each person (`voices/<video>/speaker<N>.wav`), used to replace
+  swears in that person's voice (roadmap steps 8–10). Nothing is uploaded or
+  shared. Delete the `speakers` and `voices` folders in
+  `~/Library/Application Support/CleanEars/` at any time to remove them.
 
 Speed on an M4 (10 s of audio): small.en 0.67 s on GPU, base.en 0.25 s,
 tiny.en 0.2 s on CPU.

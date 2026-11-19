@@ -84,7 +84,7 @@ chrome.runtime.onConnect.addListener((port) => {
       if (!companion.ready) return;
       stemStreams.set(msg.stream, session);
       companion.forward(msg.type === 'stemAudio'
-        ? { type: 'stem_audio', stream: msg.stream, time: msg.time, rate: msg.rate, channels: msg.channels, pcm16: msg.pcm16 }
+        ? { type: 'stem_audio', stream: msg.stream, video: msg.video, time: msg.time, rate: msg.rate, channels: msg.channels, pcm16: msg.pcm16 }
         : { type: 'stem_playhead', stream: msg.stream, time: msg.time });
     } else if (msg.type === 'transcribe') {
       const job = nextJob++;
@@ -217,6 +217,9 @@ const companion = {
         clipJobs.delete(m.id);
         const port = job && ports.get(job.session);
         if (port) safePost(port, { ...m, id: job.id });
+      } else if (m.type === 'voices') {
+        const port = ports.get(stemStreams.get(m.stream));
+        if (port) safePost(port, m);
       } else if (m.type === 'stems') {
         const port = ports.get(stemStreams.get(m.stream));
         if (port) safePost(port, m);

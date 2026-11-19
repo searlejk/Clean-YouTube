@@ -66,6 +66,14 @@ def fbank(x):
 
 
 class Embedder:
+    _shared = None
+
+    @classmethod
+    def shared(cls):
+        if cls._shared is None:
+            cls._shared = cls()
+        return cls._shared
+
     def __init__(self, providers=None):
         if not MODEL.exists():
             raise FileNotFoundError(f"{MODEL} missing (see companion/README.md)")
@@ -89,6 +97,18 @@ class Diarizer:
         self.done = set()  # window starts already fingerprinted (rounded)
         self.centroids = []  # running sums
         self.counts = []
+
+    # ── keeping labels across page reloads (step 8.2) ──
+    def state(self):
+        """Speaker profiles to save with the video (a few KB)."""
+        return {"centroids": np.stack(self.centroids).astype(np.float32) if self.centroids else np.zeros((0, 256), np.float32), "counts": np.array(self.counts, np.int64)}
+
+    def restore(self, state):
+        """Start from saved profiles: people heard before keep their labels."""
+        c, n = state.get("centroids"), state.get("counts")
+        if c is not None and len(c) and not self.centroids:
+            self.centroids = [np.asarray(x, np.float32) for x in c]
+            self.counts = [int(k) for k in n]
 
     def _assign(self, e):
         if self.centroids:

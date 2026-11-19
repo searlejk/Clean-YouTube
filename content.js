@@ -498,6 +498,12 @@
       onStemClip(msg);
       return;
     }
+    if (msg.type === 'voices') {
+      // How much clean voice the companion has per speaker (step 9).
+      const look = looks.get(msg.stream);
+      if (look) look.voices = msg.speakers || {};
+      return;
+    }
     if (msg.type === 'stems') {
       const look = looks.get(msg.stream);
       if (look) {
@@ -1516,7 +1522,10 @@
     if (e.source !== window || !m || m.__cleanEars !== 1 || m.type !== 'pcm48') return;
     if (!fullAudioOn || !port || !(m.pcm instanceof Int16Array)) return;
     if (videoForSrc(m.src)?.mediaKeys) return;
-    port.postMessage({ type: 'stemAudio', stream: m.src, time: m.time, rate: m.rate, channels: m.channels, pcm16: int16ToBase64(m.pcm) });
+    // The video ID lets the companion keep each person's speaker label (and
+    // voice sample) for this video across reloads (steps 8.2, 9).
+    const key = videoKey(videoForSrc(m.src));
+    port.postMessage({ type: 'stemAudio', stream: m.src, video: key ? key.split(':')[0] : null, time: m.time, rate: m.rate, channels: m.channels, pcm16: int16ToBase64(m.pcm) });
   });
 
   window.addEventListener('message', (e) => {
@@ -1780,6 +1789,7 @@
         asrSource: state.asrSource,
         alignedWords: state.alignedWords || 0,
         speakers: look ? [...new Set(look.words.words.map((w) => w.speaker).filter((x) => x != null))] : [],
+        voices: look ? look.voices || {} : {},
         speakerWords: look ? look.words.words.slice(0, 400).map((w) => [w.text.trim(), +w.start.toFixed(2), w.speaker ?? null]) : [],
         clips: clipStats,
         stems: look ? look.stems || [] : [],
@@ -1903,6 +1913,7 @@
       mode,
       fallbackReason,
       companion: state.companion || null,
+      voices: lookFor(activeVideo())?.voices || null,
       measuredNeed: measuredNeed(),
       wordsMeasured: needs.length,
     });

@@ -508,15 +508,43 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
       near-duplicate speaker profiles was tried and made things worse, so
       it's off. Labels are kept on words, in saved transcripts and matches,
       and shown in the popup ("said by speaker 2").
-- [ ] 8.2 Stable identities: the same person keeps the same label for the
+- [x] 8.2 Stable identities: the same person keeps the same label for the
       whole video, including after pauses, seeks, and when someone returns
       after a long gap.
+      *Result (v1.15.0):* one 223 s "video" of four people (A and B, then
+      C and D, then A and B again after ~80 s away), fed in three orders
+      ([companion/tests/speaker_stability.py](companion/tests/speaker_stability.py)):
+      straight, with a seek (last third first) and with a 60 s pause; every
+      person kept one label on 100% of their words each time, and new people
+      got new labels. Across page reloads, each video's speaker profiles
+      (a few KB) are saved in the companion's data folder and restored: a
+      fresh session that heard two new people first still gave A and B their
+      old labels ([speaker_reload.py](companion/tests/speaker_reload.py)).
 
 ## 9. Voice sample (10–30 s clip per speaker)
 
-- [ ] 9.1 Automatically collect 10–30 s of clean, swear-free speech for each
+- [x] 9.1 Automatically collect 10–30 s of clean, swear-free speech for each
       speaker from the vocal stem
-- [ ] 9.2 Quality checks: no overlap, no music bleed, enough length
+- [x] 9.2 Quality checks: no overlap, no music bleed, enough length
+      *Result (v1.15.0):* [companion/voices.py](companion/voices.py) picks,
+      per speaker, stretches of the separated voice that are one speaker
+      confidently (every fingerprint that person by a clear margin, nobody
+      else within 0.5 s), inside detected speech and 0.25 s away from turn
+      changes, free of any word-list word (0.3 s margin), not clipped or very
+      quiet, and with the music under them at most half the voice's level;
+      best first, up to 30 s ("ready" at 10 s). Saved per video as
+      `speaker<N>.wav` (48 kHz) + `voices.json` in
+      `~/Library/Application Support/CleanEars/voices/<video>/`, and shown
+      in the popup ("Voice samples: speaker 1 14 s ✓").
+      Tested on the three two-person conversations with "accident"/"winter"
+      standing in for swears ([voice_samples.py](companion/tests/voice_samples.py)):
+      **every collected second was the right person (100%) and no listed
+      word got in**, clean and with music; 9–23 s per speaker from ~35 s of
+      their speech each (with music some stretches are rejected, so a few
+      stayed just under 10 s). End to end through the extension: 9.6 s and
+      8.9 s collected, 100% the right person. Real videos run longer, so
+      30 s should be routine. Found and fixed on the way: the status message
+      wasn't being sent (a numpy true/false value can't be put into JSON).
 
 ## 10. Voice clone (small model, one voice profile per speaker)
 
