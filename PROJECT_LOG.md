@@ -27,4 +27,5 @@
 | 11/18/2026 | "Replace" mode, rough first pass at steps 11–12: swears replaced by a clean word in the speaker's cloned voice while the music keeps playing; all test swears replaced on time | 0.45 |
 | 11/18/2026 | Tested Replace mode on YouTube | 0.25 |
 | 11/18/2026 | Fixed Replace mode after the first real test: old built-in transcripts are re-done by the companion, the speaker is found when the replacement is built, one patch per swear, popup warns without the companion; re-tested on the same video (14 swears caught, 9 replaced in the speaker's voice) | 0.35 |
-| **Total** | | **14.45** |
+| 11/18/2026 | Switched voice cloning to OmniVoice (much closer to the speaker), funny context-aware stand-ins ("holy shit" → "holy guacamole", "shit" → "poop"), replacements made ahead of time; the extension now starts the companion by itself; downloaded a test video and built an offline processing step and a local editor for tweaking substitute swears | 1.25 |
+| **Total** | | **15.7** |

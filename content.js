@@ -1347,21 +1347,71 @@
   const patchStats = { requested: 0, ready: 0, played: 0, late: 0, replaced: 0, musicOnly: 0, failed: 0, last: [] };
   const patchRequests = new Map(); // id -> { look, key }
 
-  function requestReplacePatch(look, key, m, m0, m1) {
+  // The words a funny stand-in replaces, and how far it may run into the
+  // pause after them (up to 1 s, stopping before the next word).
+  function replaceSpan(look, m) {
+    const words = look.words.between(m.start - 4, m.end + 4);
+    const r = PFFilter.funnyReplacement(words, m, PF.FUNNY_PHRASES, PF.FUNNY_WORDS);
+    const next = words.find((w) => w.start >= r.end - 0.02 && w.start > r.start + 0.01);
+    const roomEnd = next ? Math.min(r.end + 1.0, Math.max(r.end, next.start - 0.05)) : r.end + 0.5;
+    return { ...r, roomEnd };
+  }
+
+  function requestReplacePatch(look, key, m, m0, m1, span) {
     if (!fullAudioOn || !port) return;
     look.patches = look.patches || new Map();
-    if (look.patches.has(key)) return;
+    if (look.patches.has(key)) return look.patches.get(key);
     // The same swear can come from two overlapping transcription windows
     // with slightly different times; one patch per stretch, or both would
     // play and double the background.
     const from = m0 - RAMP;
     const to = m1 + RAMP;
-    if ([...look.patches.values()].some((p) => p.from < to - 0.05 && from < p.to - 0.05)) return;
+    const same = [...look.patches.values()].find((p) => p.from < to - 0.05 && from < p.to - 0.05);
+    if (same) return same;
     const id = nextClipId++;
-    look.patches.set(key, { requestedAt: performance.now(), from, to });
+    const rec = { requestedAt: performance.now(), from, to, key };
+    look.patches.set(key, rec);
     patchRequests.set(id, { look, key });
     patchStats.requested++;
-    port.postMessage({ type: 'replaceClip', id, stream: look.src, from, to, word_start: m.start, word_end: m.end, speaker: m.speaker ?? null, text: m.text });
+    port.postMessage({ type: 'replaceClip', id, stream: look.src, from, to, word_start: span.start, word_end: span.end, room_end: span.roomEnd, say: span.say, speaker: m.speaker ?? null, text: m.text });
+    return rec;
+  }
+
+  // Ask for patches early (making one takes a few seconds): every swear in
+  // the transcript up to a minute ahead, beyond what's being scheduled now.
+  function prefetchPatches(video, look) {
+    const t = video.currentTime;
+    const words = look.words.between(t + SCHEDULE_AHEAD - 1, t + 60);
+    for (const m of [...PFFilter.findMatches(words, compiled), ...spottedMatches(look.spotted, t + SCHEDULE_AHEAD - 1, t + 60, words)]) {
+      const pad = coverFor(m);
+      const span = replaceSpan(look, m);
+      const m0 = span.start - pad.before;
+      const m1 = Math.max(span.end + pad.after, span.roomEnd);
+      requestReplacePatch(look, Math.round(m.start * 100) + ':' + m.text, m, m0, m1, span);
+    }
+  }
+
+  // Play a patch once both it has arrived and its swear's mute is scheduled.
+  function playPatchIfDue(look, rec) {
+    if (!rec || !rec.buffer || !rec.due || rec.src || !ctx) return;
+    const v = videoForSrc(look.src);
+    const when = look.sync.heardAt(rec.start);
+    if (!v || when == null) return;
+    const at = when + currentDelay;
+    const now = ctx.currentTime;
+    if (at + rec.buffer.duration <= now + 0.02) {
+      patchStats.late++;
+      rec.src = 'late';
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = rec.buffer;
+    src.playbackRate.value = v.playbackRate || 1;
+    src.connect(flushGain); // after the mute, before the flush/ready gates
+    if (at >= now) src.start(at);
+    else src.start(now, now - at); // already started: join part-way
+    rec.src = src;
+    patchStats.played++;
   }
 
   function onReplacePatch(msg) {
@@ -1370,6 +1420,10 @@
     if (!req || !ctx) return;
     if (msg.error || !msg.patch) {
       patchStats.failed++;
+      // Let it be asked for again in a few seconds (e.g. the audio wasn't
+      // separated yet).
+      const failed = req.look.patches?.get(req.key);
+      if (failed) setTimeout(() => req.look.patches?.get(req.key) === failed && req.look.patches.delete(req.key), 5000);
       return;
     }
     patchStats.ready++;
@@ -1377,31 +1431,27 @@
     else patchStats.musicOnly++;
     patchStats.last.unshift({ at: +msg.start.toFixed(2), replacement: msg.replacement, why: msg.why });
     patchStats.last.length = Math.min(patchStats.last.length, 10);
-    const v = videoForSrc(req.look.src);
-    const when = req.look.sync.heardAt(msg.start);
-    if (!v || when == null) return;
-    const buf = toAudioBuffer(base64ToInt16(msg.patch), msg.channels, msg.rate);
-    const at = when + currentDelay;
-    const now = ctx.currentTime;
-    if (at + buf.duration <= now + 0.02) {
-      patchStats.late++;
-      return;
+    const rec = req.look.patches?.get(req.key);
+    if (!rec) return;
+    rec.start = msg.start;
+    rec.buffer = toAudioBuffer(base64ToInt16(msg.patch), msg.channels, msg.rate);
+    playPatchIfDue(req.look, rec);
+  }
+
+  // A seek, pause or speed change re-times everything: stop queued patches
+  // so they're played again when their mutes are rescheduled.
+  function resetPatches() {
+    for (const look of looks.values()) {
+      for (const rec of look.patches?.values() || []) {
+        if (rec.src && rec.src !== 'late') {
+          try {
+            rec.src.stop();
+          } catch {}
+        }
+        rec.src = null;
+        rec.due = false;
+      }
     }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.playbackRate.value = v.playbackRate || 1;
-    src.connect(flushGain); // after the mute, before the flush/ready gates
-    if (at >= now) src.start(at);
-    else src.start(now, now - at); // already started: join part-way
-    patchStats.played++;
-    // Stop it if the viewer seeks or pauses before it plays out.
-    const stop = () => {
-      try {
-        src.stop();
-      } catch {}
-    };
-    v.addEventListener('seeking', stop, { once: true });
-    v.addEventListener('pause', stop, { once: true });
   }
 
   function base64ToInt16(b64) {
@@ -1617,6 +1667,7 @@
 
   function clearLookaheadMutes() {
     for (const look of looks.values()) look.scheduled.clear();
+    resetPatches();
     if (mode === 'lookahead' && ctx) {
       intervals = [];
       reschedule();
@@ -1765,8 +1816,11 @@
       const key = Math.round(m.start * 100) + ':' + m.text;
       if (look.scheduled.has(key)) continue;
       const pad = coverFor(m); // lookahead words are already in true time
-      const m0 = m.start - pad.before;
-      const m1 = m.end + pad.after;
+      // Replace mode: what to say and which words it replaces (a phrase can
+      // take in a neighbour, "fuck off" -> "get out"), plus the pause after it.
+      const span = settings.mode === 'replace' && fullAudioOn ? replaceSpan(look, m) : null;
+      const m0 = (span ? span.start : m.start) - pad.before;
+      const m1 = span ? Math.max(span.end + pad.after, span.roomEnd) : m.end + pad.after;
       if (m1 < t) continue;
       const c0 = look.sync.heardAt(m0);
       const c1 = look.sync.heardAt(m1);
@@ -1774,7 +1828,13 @@
       look.scheduled.add(key);
       if (SILENT_TEST) testLog.mutes.push({ text: m.text, aligned: !!m.aligned, spotted: !!m.spotted, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
       addInterval(c0 + currentDelay, c1 + currentDelay, m);
-      if (settings.mode === 'replace') requestReplacePatch(look, key, m, m0, m1);
+      if (span) {
+        const rec = requestReplacePatch(look, key, m, m0, m1, span);
+        if (rec) {
+          rec.due = true;
+          playPatchIfDue(look, rec);
+        }
+      }
       else requestStemClip(look, key, m0 - CLIP_MARGIN, m1 + CLIP_MARGIN);
       updateBadges(); // refresh the "N filtered" count
     }
@@ -1851,6 +1911,13 @@
         return;
       }
       scheduleLookaheadMutes(v, look);
+      if (settings.mode === 'replace' && fullAudioOn && performance.now() - (look.lastPrefetch || 0) > 1000) {
+        look.lastPrefetch = performance.now();
+        prefetchPatches(v, look);
+      }
+      // Any patch that's ready and due but not playing yet (e.g. the clock
+      // mapping wasn't available when it arrived): start it now.
+      for (const rec of look.patches?.values() || []) if (rec.due && rec.buffer && !rec.src) playPatchIfDue(look, rec);
       if (look.clips) for (const [k, c] of look.clips) if (c.to < v.currentTime - 5) look.clips.delete(k); // played
       if (ctx.currentTime - lastCalibration > 2) {
         lastCalibration = ctx.currentTime;
@@ -1891,6 +1958,7 @@
         speakerWords: look ? look.words.words.slice(0, 400).map((w) => [w.text.trim(), +w.start.toFixed(2), w.speaker ?? null]) : [],
         clips: clipStats,
         patches: patchStats,
+        patchRecs: [...(look?.patches?.values() || [])].slice(-20).map((r) => ({ from: +r.from.toFixed(2), due: !!r.due, ready: !!r.buffer, src: r.src ? (r.src === 'late' ? 'late' : 'playing') : null })),
         stems: look ? look.stems || [] : [],
         stemsAhead: look && v ? stemsAhead(look, v.currentTime) : null,
         heard: state.lastText || '', // last delay-mode transcript text

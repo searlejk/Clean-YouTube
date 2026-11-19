@@ -30,6 +30,32 @@ built-in model loads and takes over.
 Speed on an M4 (10 s of audio): small.en 0.67 s on GPU, base.en 0.25 s,
 tiny.en 0.2 s on CPU.
 
+## Substitute-swear editor
+
+Work on a downloaded video offline and tweak how each substitute swear sounds
+in the speaker's voice (personal use only; downloading is against YouTube's
+terms otherwise):
+
+```sh
+companion/.venv/bin/yt-dlp -f bestaudio -o "media/%(id)s.%(ext)s" "https://www.youtube.com/watch?v=VIDEO_ID"
+companion/.venv/bin/python companion/offline.py media/VIDEO_ID.webm   # ~2½ min for a 9-min video
+companion/.venv/bin/python companion/editor_server.py                 # then open http://127.0.0.1:47824
+```
+
+Per swear: play the original and the substitute in context; switch on/off
+and adjust the voice reference (length or hand-picked stretches of their
+speech), pitch, tone match, loudness, quality (steps) and timing; change the
+word; Regenerate; save settings per speaker (`media/<id>/presets.json`).
+
+## Starting automatically
+
+`companion/native-host.sh install` lets the extension start the companion
+when you play YouTube (Chrome native messaging; the launcher is copied to
+`~/Library/Application Support/CleanEars/` because macOS won't let Chrome
+run programs from Desktop/Documents/Downloads). Started that way it quits
+after 15 minutes with no YouTube playing. `companion/native-host.sh uninstall`
+undoes it.
+
 ## Development
 
 - `companion/server.py --allow-local-test-pages` also accepts the extension's

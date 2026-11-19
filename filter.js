@@ -141,6 +141,45 @@
     return idx.map((i) => ({ start: words[i].start, end: words[i].end }));
   }
 
-  root.PFFilter = { normalizeToken, patternToRegex, compileWordList, findMatches, findAllowed };
+  // Replace mode (funny stand-ins): what to say for a caught swear, looking
+  // at the words around it. `words` sorted by time, `m` a match from
+  // findMatches. Returns { start, end, say } where start/end cover the words
+  // being replaced (a phrase can replace a neighbour too: "fuck off" -> "get
+  // out"; or keep one: "holy shit" -> "holy guacamole" replaces only "shit").
+  const _re = new Map();
+  function _pat(p) {
+    if (!_re.has(p)) _re.set(p, patternToRegex(p));
+    return _re.get(p);
+  }
+  function funnyReplacement(words, m, phrases, singles) {
+    const norm = (w) => normalizeToken(w.text);
+    const i = words.findIndex((w) => Math.abs(w.start - m.start) < 0.02);
+    if (i >= 0) {
+      for (const [pat, say] of phrases || []) {
+        for (let k = 0; k < pat.length; k++) {
+          const s0 = i - k;
+          if (s0 < 0 || s0 + pat.length > words.length) continue;
+          let ok = true;
+          for (let j = 0; j < pat.length && ok; j++) ok = norm(words[s0 + j]).some((f) => _pat(pat[j])?.test(f));
+          if (!ok || !norm(words[i]).some((f) => _pat(pat[k])?.test(f))) continue;
+          const changed = say.map((x, j) => (x === null ? null : j)).filter((j) => j !== null);
+          if (!changed.length) continue;
+          const a = words[s0 + changed[0]];
+          const b = words[s0 + changed[changed.length - 1]];
+          // What's replaced must overlap the caught swear (not just a neighbour).
+          if (a.start > m.end - 0.01 || b.end < m.start + 0.01) continue;
+          return { start: a.start, end: b.end, say: say.filter((x) => x).join(' ').trim(), phrase: pat.join(' ') };
+        }
+      }
+    }
+    const text = (m.text || '').toLowerCase();
+    const tokens = text.split(/\s+/).flatMap((t) => normalizeToken(t));
+    for (const [p, say] of singles || []) {
+      if (tokens.some((t) => _pat(p)?.test(t))) return { start: m.start, end: m.end, say };
+    }
+    return { start: m.start, end: m.end, say: 'fiddlesticks' };
+  }
+
+  root.PFFilter = { normalizeToken, patternToRegex, compileWordList, findMatches, findAllowed, funnyReplacement };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.PFFilter;
 })(typeof globalThis !== 'undefined' ? globalThis : self);

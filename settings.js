@@ -38,6 +38,44 @@
   // Names and phrases that contain a listed word but aren't swearing.
   const DEFAULT_ALLOW = ['Dick Van Dyke', 'Moby Dick', 'Dick Tracy', 'Philip K Dick', 'Dick Cheney', 'cock a doodle doo'];
 
+  // Replace mode: funny stand-ins, said in the speaker's own voice.
+  // Single words: first matching pattern wins (lowercase, * = anything).
+  const FUNNY_WORDS = [
+    ['motherfuck*', 'mother trucker'], ['fucking', 'flipping'], ['fuckin', 'flippin'], ['fucked', 'flipped'],
+    ['fucker*', 'fudge nugget'], ['*fuck*', 'fiddlesticks'],
+    ['bullshit*', 'baloney'], ['horseshit*', 'horse feathers'], ['shitty', 'poopy'], ['shit*', 'poop'],
+    ['bitches', 'biscuits'], ['bitch*', 'biscuit'], ['asshole*', 'butthead'], ['jackass*', 'jackalope'],
+    ['dumbass*', 'doofus'], ['asses', 'booties'], ['ass', 'booty'], ['bastard*', 'buttercup'],
+    ['goddamn*', 'gosh darn'], ['goddam*', 'gosh darn'], ['damn*', 'dagnabbit'], ['hell', 'heck'],
+    ['dickhead*', 'doofus'], ['dick*', 'doofus'], ['cocksucker*', 'rascal'], ['cock*', 'rooster'],
+    ['pissed', 'peeved'], ['pissing', 'tinkling'], ['piss', 'tinkle'], ['crappy', 'cruddy'], ['crap*', 'crud'],
+    ['whore*', 'hooligan'], ['slut*', 'hooligan'], ['prick*', 'pickle'], ['twat*', 'twit'],
+    ['wanker*', 'wally'], ['cunt*', 'numpty'],
+  ];
+  // Phrases: the words around a swear change what fits. Each word of the
+  // pattern pairs with what's said instead; null keeps the speaker's own word.
+  const FUNNY_PHRASES = [
+    [['holy', 'shit*'], [null, 'guacamole']],
+    [['holy', 'fuck*'], [null, 'moly']],
+    [['holy', 'crap*'], [null, 'cannoli']],
+    [['oh', 'shit*'], [null, 'snap']],
+    [['oh', 'fuck*'], [null, 'fiddlesticks']],
+    [['fuck*', 'off'], ['get', 'out']],
+    [['fuck', 'you'], ['bite', 'me']],
+    [['shut', 'the', 'fuck', 'up'], [null, 'your', 'pie', 'hole']],
+    [['what', 'the', 'fuck*'], [null, null, 'fudgesicle']],
+    [['what', 'the', 'hell'], [null, null, 'heck']],
+    [['son', 'of', 'a', 'bitch'], [null, null, null, 'biscuit']],
+    [['piece', 'of', 'shit*'], [null, null, 'junk']],
+    [['get', 'the', 'fuck', 'out'], [null, null, 'heck', null]],
+    [['mother', 'fucker*'], [null, 'trucker']],
+    [['god', 'damn*'], ['gosh', 'darn']],
+    [['kick', 'ass'], [null, 'booty']],
+    [['my', 'ass'], [null, 'patootie']],
+    [['dumb', 'ass'], [null, 'doofus']],
+    [['bull', 'shit*'], ['baloney', '']],
+  ];
+
   const MODELS = {
     'tiny.en': {
       id: 'onnx-community/whisper-tiny.en_timestamped',
@@ -84,5 +122,5 @@
 
   const SETTINGS_VERSION = 2;
 
-  root.PF = { DEFAULTS, DEFAULT_WORDS, DEFAULT_ALLOW, MODELS, COMPANION_MODELS, SETTINGS_VERSION };
+  root.PF = { DEFAULTS, DEFAULT_WORDS, DEFAULT_ALLOW, FUNNY_WORDS, FUNNY_PHRASES, MODELS, COMPANION_MODELS, SETTINGS_VERSION };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

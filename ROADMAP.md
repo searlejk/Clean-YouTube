@@ -568,6 +568,19 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
       0.16–0.50); the test speakers are macOS voices themselves, so this is
       only a rough guide. Listening files: `voice-demos/index.html`.
       Next: listen, then compare another model (F5-TTS or XTTS-v2).
+      *Second candidate, OmniVoice* (k2-fsa, Apache-2.0, ~3.3 GB; v1.17):
+      OpenVoice didn't sound like the speaker to the user's ears.
+      OmniVoice clones from 3–10 s of reference plus its transcript and can
+      speak to a set duration. Voice-fingerprint similarity 0.47–0.53 vs
+      OpenVoice's 0.07–0.29; 2.4–4.3 s per phrase on the M4 GPU with a 6 s
+      reference (8–16 steps), so replacements are now asked for as soon as a
+      swear is in the transcript (up to 60 s ahead) and kept until played.
+      Still not close enough to the real voice for the user, so an offline
+      editor (`companion/editor_server.py`) lets them tweak reference, pitch,
+      tone, loudness, quality and timing per swear and save per-speaker
+      settings. Funny, context-aware stand-ins replaced plain ones (shit →
+      poop, holy shit → holy guacamole, fuck off → get out), and a long
+      stand-in may use the pause after the swear.
 - [ ] 10.2 One shared model, one profile per speaker: each speaker gets their
       own voice sample/embedding, not a separate full model. Cap at a few
       voices (e.g. 4) to protect the user's computer.

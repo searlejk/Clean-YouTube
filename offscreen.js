@@ -246,6 +246,10 @@ const companion = {
       }
     };
     ws.onclose = () => {
+      if (!this.ready && !this.info.state) {
+        // Never got an answer: it isn't running. Ask Chrome to start it.
+        chrome.runtime.sendMessage({ type: 'pf:startCompanion' }).then((r) => (this.launch = r)).catch(() => {});
+      }
       this.ws = null;
       this.ready = false;
       this.answered = true;

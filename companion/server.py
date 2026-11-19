@@ -281,7 +281,8 @@ class Engine:
         if self.replacer is None:
             from replace import Replacer
 
-            self.replacer = Replacer(self.stems, self.voices)
+            self.replacer = Replacer(self.stems, self.voices, lambda st: self.stream_words.get(st, []),
+                                     transcribe=lambda a16: self._transcribe(a16, 0.0)[1])
         return self.replacer
 
     async def warm_replacer(self):
@@ -383,6 +384,7 @@ async def transcribe_job(engine, msg, send):
 
 
 CLIP_WAIT_S = 5.0  # how long a stem clip request waits for separation
+PATCH_WAIT_S = 20.0  # a replacement patch, asked for well ahead, waits longer
 CLIP_MAX_S = 10.0
 
 
@@ -444,11 +446,13 @@ async def replace_clip_job(engine, msg, send):
         t0, t1 = float(msg["from"]), float(msg["to"])
         if not (0 < t1 - t0 <= CLIP_MAX_S):
             raise ValueError("bad clip length")
-        deadline = time.monotonic() + CLIP_WAIT_S
+        # Patches are asked for early (as soon as a swear is in the transcript),
+        # so that stretch's audio may still be on its way: wait for it.
+        deadline = time.monotonic() + PATCH_WAIT_S
         while engine.stems.clip(msg["stream"], t0, t1) is None:
-            if time.monotonic() > deadline or not engine.stems.received(msg["stream"], t0, t1):
+            if time.monotonic() > deadline:
                 raise RuntimeError("not separated")
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)
         engine._ensure_replacer()
         spk = msg.get("speaker")
         # Who said it, from the speaker data as it is now (a label made at
@@ -460,7 +464,8 @@ async def replace_clip_job(engine, msg, send):
                 spk = lab["speaker"] if lab.get("speaker_conf", 0) >= 0.05 else None
         res = await asyncio.get_running_loop().run_in_executor(
             engine.clone_pool, engine.replacer.build, msg["stream"], t0, t1,
-            float(msg.get("word_start", t0)), float(msg.get("word_end", t1)), None if spk is None else int(spk), str(msg.get("text", "")))
+            float(msg.get("word_start", t0)), float(msg.get("word_end", t1)), None if spk is None else int(spk),
+            str(msg.get("say") or ""), float(msg["room_end"]) if msg.get("room_end") is not None else None)
         if res is None:
             raise RuntimeError("not separated")
         if os.environ.get("CLEAN_EARS_DUMP_PATCHES"):  # debugging: before/after WAVs for each swear
@@ -533,8 +538,12 @@ def make_origin_check(cfg, allow_any, allow_local_pages=False):
     return check
 
 
+CONNECTIONS = {"open": 0, "last": time.monotonic()}  # for --idle-exit
+
+
 async def handle(ws, engine):
     log.info("extension connected")
+    CONNECTIONS["open"] += 1
     send_lock = asyncio.Lock()
 
     async def send(msg):
@@ -602,6 +611,8 @@ async def handle(ws, engine):
     except websockets.ConnectionClosed:
         pass
     finally:
+        CONNECTIONS["open"] -= 1
+        CONNECTIONS["last"] = time.monotonic()
         if announcer:
             announcer.cancel()
         for task in tasks:
@@ -642,6 +653,7 @@ async def main():
     p.add_argument("--check", action="store_true", help="download the model, time one pass, and exit")
     p.add_argument("--asr-input", default=ASR_INPUT, choices=["vocals", "mix"], help="transcribe the separated voice (default) or the full mix")
     p.add_argument("--no-align", action="store_true", help="use Whisper's own word times instead of forced alignment")
+    p.add_argument("--idle-exit", type=float, default=0, help="quit after this many seconds with no extension connected (0: never)")
     p.add_argument("--spot-swears", action="store_true", help="experimental: also mute words the swear spotter thinks are swears (more false alarms)")
     args = p.parse_args()
 
@@ -671,6 +683,13 @@ async def main():
         max_size=8 * 1024 * 1024,
     ):
         log.info("listening on ws://127.0.0.1:%d (model %s)", args.port, args.model)
+        if args.idle_exit > 0:
+            # Started by the extension: free the memory again once YouTube's done.
+            while True:
+                await asyncio.sleep(30)
+                if CONNECTIONS["open"] == 0 and time.monotonic() - CONNECTIONS["last"] > args.idle_exit:
+                    log.info("no extension connected for %.0f min; quitting", args.idle_exit / 60)
+                    return
         await asyncio.get_running_loop().create_future()
 
 

@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 
 TARGET_S = 30.0  # sample length to aim for per speaker
-READY_S = 10.0  # enough to clone from
+READY_S = 6.0  # enough to clone from (OmniVoice needs 3–10 s)
 MIN_PIECE_S = 1.0
 EDGE_TRIM_S = 0.25  # stay this far inside a speaker's run (turn changes)
 OTHER_SPEAKER_GAP_S = 0.5

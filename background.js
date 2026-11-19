@@ -62,11 +62,28 @@ async function ensureOffscreen() {
   await creating;
 }
 
+let lastStartTry = 0;
+async function startCompanion() {
+  if (Date.now() - lastStartTry < 60000) return { ok: false, error: 'tried recently' };
+  lastStartTry = Date.now();
+  try {
+    return await chrome.runtime.sendNativeMessage('com.cleanears.companion', { cmd: 'start' });
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) }; // launcher not installed
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'pf:blocked') {
     const n = Math.max(0, Math.min(100, Math.floor(msg.count) || 0));
     if (n) addBlocked(n);
     return;
+  }
+  if (msg?.type === 'pf:startCompanion') {
+    // The companion isn't running: ask Chrome to run its launcher (installed
+    // with companion/native-host.sh). At most once a minute.
+    startCompanion().then(sendResponse);
+    return true;
   }
   if (msg?.type === 'pf:offscreenIdle') {
     chrome.offscreen.closeDocument().catch(() => {});

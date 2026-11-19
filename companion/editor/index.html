@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Swear Editor</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #111; --muted: #666; --line: #e3e3e3; --field: #f4f4f5;
+    --accent: #c4302b; --ok: #1f9d55; --warn: #b45309; --sel: #fde8e7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #18181b; --fg: #f1f1f1; --muted: #a1a1aa; --line: #333; --field: #27272a; --accent: #ff5a4f; --ok: #3ecf8e; --warn: #f59e0b; --sel: #3a1f1e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; }
+  header select { margin-left: auto; }
+  main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; height: calc(100vh - 49px); }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; height: auto; } }
+  #list { overflow: auto; border-right: 1px solid var(--line); }
+  .item { display: grid; grid-template-columns: 48px 1fr; gap: 2px 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .item:hover { background: var(--field); }
+  .item.sel { background: var(--sel); }
+  .item .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .item .w b { color: var(--accent); }
+  .item .s { grid-column: 2; color: var(--muted); font-size: 12px; }
+  #panel { overflow: auto; padding: 16px 20px 40px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .play { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
+  button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .group { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+  .group.off > .body { opacity: .4; pointer-events: none; }
+  .group h3 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .group h3 .hint { font-weight: normal; color: var(--muted); font-size: 12px; }
+  .body { margin-top: 8px; display: grid; gap: 8px; }
+  label.f { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 8px; }
+  label.f output { font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
+  input[type=text] { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--field); color: var(--fg); width: 100%; }
+  .switch { position: relative; width: 34px; height: 20px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 20px; transition: .15s; }
+  .switch span::after { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; border-radius: 50%; background: #fff; transition: .15s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(14px); }
+  .pieces { display: grid; gap: 4px; max-height: 180px; overflow: auto; }
+  .piece { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; align-items: center; font-size: 12px; }
+  .status { color: var(--muted); min-height: 1.4em; }
+  .status.err { color: var(--accent); }
+  .info { font-size: 12px; color: var(--muted); }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Swear editor</h1>
+  <span class="info">Tweak how substitute swears sound in each speaker's voice · <kbd>R</kbd> regenerate · <kbd>S</kbd> substitute · <kbd>O</kbd> original</span>
+  <select id="project"></select>
+</header>
+<main>
+  <div id="list"></div>
+  <div id="panel"><p class="info">Pick a swear on the left.</p></div>
+</main>
+<audio id="player"></audio>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+let P = null, pid = null, cur = null, last = null, settings = {};
+const player = $('#player');
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+async function loadProjects() {
+  const list = await api('/api/projects');
+  $('#project').innerHTML = list.map((p) => `<option value="${p.id}">${p.title}</option>`).join('');
+  if (list.length) loadProject(list[0].id);
+  else $('#panel').innerHTML = '<p class="info">No projects yet: run companion/offline.py on a downloaded video.</p>';
+}
+
+async function loadProject(id) {
+  pid = id;
+  P = await api('/api/project?id=' + encodeURIComponent(id));
+  $('#list').innerHTML = P.swears.map((s, i) => `
+    <div class="item" data-i="${i}">
+      <div class="t">${fmt(s.start)}</div>
+      <div class="w"><b>${s.swear}</b> → ${s.say}</div>
+      <div class="s">speaker ${s.speaker == null ? '?' : s.speaker + 1}${s.phrase ? ' · phrase “' + s.phrase + '”' : ''} · room ${(s.roomEnd - s.start).toFixed(2)} s</div>
+    </div>`).join('');
+  $('#list').onclick = (e) => { const it = e.target.closest('.item'); if (it) select(+it.dataset.i); };
+  if (P.swears.length) select(0);
+}
+
+function speakerPreset(spk) {
+  return { ...P.defaults, ...(P.presets[String(spk)] || {}) };
+}
+
+function select(i) {
+  cur = i; last = null;
+  document.querySelectorAll('.item').forEach((el) => el.classList.toggle('sel', +el.dataset.i === i));
+  const s = P.swears[i];
+  settings = { ...speakerPreset(s.speaker), say: s.say, ref_pieces: null };
+  render();
+}
+
+const groups = [
+  { key: null, title: 'Substitute word', hint: 'what is said instead', fields: [{ id: 'say', type: 'text', label: 'Say' }] },
+  { key: 'ref_on', title: 'Voice reference', hint: 'which of their real speech OmniVoice copies', fields: [{ id: 'ref_seconds', label: 'Reference length', min: 3, max: 10, step: 0.5, unit: ' s' }], pieces: true },
+  { key: 'pitch_on', title: 'Pitch', hint: 'shift up or down', fields: [{ id: 'pitch', label: 'Semitones', min: -5, max: 5, step: 0.5, unit: '' }] },
+  { key: 'tone_on', title: 'Tone match', hint: 'match the brightness/EQ of the original swear', fields: [{ id: 'tone', label: 'Strength', min: 0, max: 1, step: 0.05, unit: '' }] },
+  { key: 'loud_on', title: 'Loudness', hint: 'matched to the original, then adjusted', fields: [{ id: 'loud_db', label: 'Adjust', min: -9, max: 9, step: 0.5, unit: ' dB' }] },
+  { key: 'quality_on', title: 'Quality', hint: 'more steps: slower, cleaner (default 12)', fields: [{ id: 'steps', label: 'Steps', min: 8, max: 64, step: 4, unit: '' }] },
+  { key: 'timing_on', title: 'Timing', hint: 'room to say it, and its length', fields: [{ id: 'room_use', label: 'Use pause after', min: 0, max: 1, step: 0.05, unit: '' }, { id: 'length', label: 'Length', min: 0.5, max: 1.6, step: 0.05, unit: '×' }] },
+];
+
+function render() {
+  const s = P.swears[cur];
+  const voice = P.voices[s.speaker];
+  const pieces = voice ? voice.pieces : [];
+  $('#panel').innerHTML = `
+    <div class="row"><h2 style="margin:0">${fmt(s.start)} · “${s.swear}” → “${settings.say}”</h2></div>
+    <div class="info">speaker ${s.speaker == null ? 'unknown' : s.speaker + 1} · voice sample ${voice ? voice.seconds + ' s' : 'none'} · room to speak ${(s.roomEnd - s.start).toFixed(2)} s</div>
+    <div class="play">
+      <button id="b-orig">▶ Original <kbd>O</kbd></button>
+      <button id="b-sub" ${last ? '' : 'disabled'}>▶ Substitute <kbd>S</kbd></button>
+      <button id="b-word" ${last ? '' : 'disabled'}>▶ Word only</button>
+      <button id="b-gen" class="primary">Regenerate <kbd>R</kbd></button>
+      <button id="b-save" ${s.speaker == null ? 'disabled' : ''}>Save for speaker ${s.speaker == null ? '' : s.speaker + 1}</button>
+    </div>
+    <div id="status" class="status">${last ? infoText(last) : 'Press Regenerate to make the substitute with these settings.'}</div>
+    ${groups.map((g) => groupHtml(g, pieces)).join('')}`;
+  $('#b-orig').onclick = playOriginal;
+  $('#b-sub').onclick = () => playRendered('context');
+  $('#b-word').onclick = () => playRendered('word');
+  $('#b-gen').onclick = regenerate;
+  $('#b-save').onclick = savePreset;
+  bindControls();
+}
+
+function groupHtml(g, pieces) {
+  const on = g.key ? !!settings[g.key] : true;
+  const fields = g.fields.map((f) => f.type === 'text'
+    ? `<label class="f"><span>${f.label}</span><input type="text" data-k="${f.id}" value="${settings[f.id] ?? ''}"><span></span></label>`
+    : `<label class="f"><span>${f.label}</span><input type="range" data-k="${f.id}" min="${f.min}" max="${f.max}" step="${f.step}" value="${settings[f.id]}"><output>${(+settings[f.id]).toFixed(2).replace(/\.?0+$/, '')}${f.unit}</output></label>`).join('');
+  const pc = g.pieces && pieces.length ? `<div class="info">Or pick the stretches to copy (ticked ones override the length):</div><div class="pieces">${pieces.map((p, j) => {
+    const chk = settings.ref_pieces && settings.ref_pieces.some(([a, b]) => Math.abs(a - p.start) < 0.01);
+    return `<div class="piece"><input type="checkbox" data-piece="${j}" ${chk ? 'checked' : ''}><button data-play="${j}">▶</button><span>${fmt(p.start)} · ${(p.end - p.start).toFixed(1)} s</span></div>`;
+  }).join('')}</div>` : '';
+  return `<div class="group ${on ? '' : 'off'}">
+    <h3>${g.key ? `<label class="switch"><input type="checkbox" data-on="${g.key}" ${on ? 'checked' : ''}><span></span></label>` : ''}${g.title} <span class="hint">${g.hint}</span></h3>
+    <div class="body">${fields}${pc}</div></div>`;
+}
+
+function bindControls() {
+  const pieces = (P.voices[P.swears[cur].speaker] || {}).pieces || [];
+  document.querySelectorAll('[data-on]').forEach((el) => (el.onchange = () => { settings[el.dataset.on] = el.checked; el.closest('.group').classList.toggle('off', !el.checked); }));
+  document.querySelectorAll('[data-k]').forEach((el) => (el.oninput = () => {
+    const k = el.dataset.k;
+    settings[k] = el.type === 'range' ? +el.value : el.value;
+    const out = el.parentElement.querySelector('output');
+    if (out) { const f = groups.flatMap((g) => g.fields).find((x) => x.id === k); out.textContent = (+el.value).toFixed(2).replace(/\.?0+$/, '') + (f.unit || ''); }
+  }));
+  document.querySelectorAll('[data-piece]').forEach((el) => (el.onchange = () => {
+    const chosen = [...document.querySelectorAll('[data-piece]:checked')].map((c) => pieces[+c.dataset.piece]);
+    settings.ref_pieces = chosen.length ? chosen.map((p) => [p.start, p.end]) : null;
+  }));
+  document.querySelectorAll('[data-play]').forEach((el) => (el.onclick = () => {
+    const p = pieces[+el.dataset.play];
+    playUrl(`/api/audio?id=${pid}&track=vocals&start=${p.start}&end=${p.end}`);
+  }));
+}
+
+function infoText(r) {
+  const i = r.info;
+  if (i.why) return i.why;
+  return `Made “${i.say}” in ${r.seconds} s · ${i.seconds} s long (target ${i.target} s) · ${i.steps} steps · reference ${i.reference.seconds} s: “${i.reference.text.slice(0, 90)}${i.reference.text.length > 90 ? '…' : ''}”`;
+}
+
+function setStatus(t, err) { const el = $('#status'); el.textContent = t; el.classList.toggle('err', !!err); }
+function playUrl(u) { player.src = u; player.play(); }
+function playOriginal() {
+  const s = P.swears[cur];
+  playUrl(`/api/audio?id=${pid}&track=mix&start=${Math.max(0, s.start - 2)}&end=${s.roomEnd + 2}`);
+}
+function playRendered(which) { if (last) playUrl(`/api/rendered?rid=${last.rid}&which=${which}`); }
+
+async function regenerate() {
+  const btn = $('#b-gen');
+  btn.disabled = true;
+  setStatus('Making the substitute…');
+  try {
+    last = await api('/api/render', { id: pid, index: cur, settings });
+    render();
+    playRendered('context');
+  } catch (e) {
+    setStatus('Failed: ' + e.message, true);
+  } finally {
+    const b = $('#b-gen'); if (b) b.disabled = false;
+  }
+}
+
+async function savePreset() {
+  const s = P.swears[cur];
+  const { say, ref_pieces, ...keep } = settings;
+  const r = await api('/api/presets', { id: pid, speaker: s.speaker, settings: keep });
+  P.presets = r.presets;
+  setStatus(`Saved as speaker ${s.speaker + 1}'s settings for this video.`);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input[type=text]') || cur == null) return;
+  if (e.key === 'r') regenerate();
+  if (e.key === 's') playRendered('context');
+  if (e.key === 'o') playOriginal();
+});
+$('#project').onchange = (e) => loadProject(e.target.value);
+loadProjects().catch((e) => ($('#panel').innerHTML = `<p class="status err">${e.message}</p>`));
+</script>
+</body>
+</html>

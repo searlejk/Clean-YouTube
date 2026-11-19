@@ -9,6 +9,20 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.17.x · OmniVoice, funny stand-ins, auto-start, editor
+
+- [ ] **Auto-start.** With the companion stopped, play a YouTube video: within
+      ~20 s the popup's "Companion app" says Running (it quits again 15 min
+      after you stop watching).
+- [ ] **Funny stand-ins in Replace mode**: "shit" → poop, "holy shit" → holy
+      guacamole, "fuck off" → get out, said in the speaker's voice, made
+      ahead of time so none are late.
+- [ ] **Editor.** Run `companion/.venv/bin/python companion/editor_server.py`,
+      open http://127.0.0.1:47824, pick a swear, press Regenerate, compare
+      Original vs Substitute, try the switches (voice reference, pitch, tone
+      match, loudness, quality, timing), and Save for the speaker when it
+      sounds right. Note which settings make it sound most like the person.
+
 ## Version 1.16.2 · Replace mode fixes after the first real test
 
 - [ ] **Companion warning.** Choose Replace with the companion stopped: the
