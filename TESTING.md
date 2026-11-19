@@ -9,6 +9,16 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.16.2 · Replace mode fixes after the first real test
+
+- [ ] **Companion warning.** Choose Replace with the companion stopped: the
+      popup shows "⚠ The companion app isn't running, so Replace works like
+      Silence".
+- [ ] **Re-test the Gordon Ramsay video** (U4gOr2OfEf4) with the companion
+      running: swears are caught (incl. ones missed before), the timing is
+      tight, and Gordon's swears become "fudge"/"shoot"/"jerk" in his voice.
+      The before/after clips I captured are in `voice-demos/index.html`.
+
 ## Version 1.16.0 · Replace mode (rough first pass at steps 11–12)
 
 Start the companion, reload Clean Ears, and in the popup choose **Replace**.

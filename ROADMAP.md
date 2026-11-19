@@ -603,6 +603,20 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
       ("shoot" 1.98 s to make, "fudge" 0.76 s, "dang" 0.68 s), none missed;
       the first try was late (15 s to load the model) before the warm-up.
       Before/after audio: `voice-demos/index.html`.
+      *First real-video test (v1.16.1–1.16.2, Gordon Ramsay pranks
+      compilation):* the first try played no replacements and missed swears
+      because (1) the companion wasn't running, so Replace acted like
+      Silence (the popup now warns about this), and (2) the video's
+      transcript saved on an earlier watch with the built-in model kept
+      being reused, so its misses and rough timings stuck; saved built-in
+      transcripts are now re-done by the companion once it's running. Also
+      fixed: the replacement now works out who's speaking when the patch is
+      built (labels made at transcription time were mostly missing), and a
+      swear seen by two overlapping windows got two patches. After the
+      fixes, the first 2¾ minutes: 14 swears caught with exact timing (incl.
+      ones the old transcript missed), all scheduled ~5.9 s ahead, none late
+      or missed; 9 replaced in the speaker's voice (mostly Gordon), 5
+      music-only for people without a voice sample yet.
 - [ ] 12.4 When unsure, don't guess: if the speaker is uncertain, voices
       overlap, or a new speaker has no profile yet, fall back to silence or a
       bleep rather than risk the wrong voice.

@@ -451,6 +451,13 @@ async def replace_clip_job(engine, msg, send):
             await asyncio.sleep(0.05)
         engine._ensure_replacer()
         spk = msg.get("speaker")
+        # Who said it, from the speaker data as it is now (a label made at
+        # transcription time can be missing or early); unsure -> no voice.
+        diar = engine.stems.streams.get(msg["stream"], {}).get("diar")
+        if diar is not None:
+            lab = diar.label_words([{"text": "", "start": float(msg.get("word_start", t0)), "end": float(msg.get("word_end", t1))}])[0]
+            if lab.get("speaker") is not None:
+                spk = lab["speaker"] if lab.get("speaker_conf", 0) >= 0.05 else None
         res = await asyncio.get_running_loop().run_in_executor(
             engine.clone_pool, engine.replacer.build, msg["stream"], t0, t1,
             float(msg.get("word_start", t0)), float(msg.get("word_end", t1)), None if spk is None else int(spk), str(msg.get("text", "")))

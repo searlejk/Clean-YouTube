@@ -108,6 +108,16 @@ async function init() {
 // The companion app (roadmap step 2.3): ask it directly whether it's running,
 // so this works even when no YouTube tab is open.
 const COMPANION_URL = 'ws://127.0.0.1:47823';
+let companionRunning = false;
+
+// Replace needs the companion; without it swears just go silent. Say so.
+const REPLACE_HINT = 'Experimental, needs the companion app: says a clean word (“shoot”) in the speaker\'s own voice while the music keeps playing. Until it has a voice sample for a speaker, their swears go quiet but the music stays.';
+function updateReplaceHint() {
+  const el = $('replace-hint');
+  if (!el) return;
+  el.textContent = companionRunning ? REPLACE_HINT : '⚠ The companion app isn\'t running, so Replace works like Silence. Start it with companion/start.sh.';
+  el.classList.toggle('warn-text', !companionRunning);
+}
 function showCompanion(kind, text, hint) {
   $('companion-dot').className = 'dot ' + kind;
   $('companion-text').textContent = text;
@@ -132,11 +142,15 @@ function watchCompanion() {
     if (m.type !== 'status') return;
     answered = true;
     const name = PF.COMPANION_MODELS[m.model]?.label || m.model;
+    companionRunning = m.state === 'ready';
+    updateReplaceHint();
     if (m.state === 'ready') showCompanion('ok', `Running · ${name} on ${m.device === 'mps' ? 'GPU' : 'CPU'}`, 'Reads ahead with a bigger, more accurate model than the one built into Chrome.');
     else if (m.state === 'loading') showCompanion('warn', `Loading ${name}…`, 'Clean Ears uses the built-in model until it is ready.');
     else showCompanion('err', 'Companion error', m.message || '');
   };
   ws.onclose = () => {
+    companionRunning = false;
+    updateReplaceHint();
     if (!answered) {
       showCompanion('', 'Not running', 'Optional: runs a bigger, more accurate model outside Chrome. To start it, run companion/start.sh in Terminal (first time: companion/install.sh). To start it at every login: companion/login-item.sh on.');
     } else {

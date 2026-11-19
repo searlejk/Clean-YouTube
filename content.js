@@ -1351,11 +1351,17 @@
     if (!fullAudioOn || !port) return;
     look.patches = look.patches || new Map();
     if (look.patches.has(key)) return;
+    // The same swear can come from two overlapping transcription windows
+    // with slightly different times; one patch per stretch, or both would
+    // play and double the background.
+    const from = m0 - RAMP;
+    const to = m1 + RAMP;
+    if ([...look.patches.values()].some((p) => p.from < to - 0.05 && from < p.to - 0.05)) return;
     const id = nextClipId++;
-    look.patches.set(key, { requestedAt: performance.now() });
+    look.patches.set(key, { requestedAt: performance.now(), from, to });
     patchRequests.set(id, { look, key });
     patchStats.requested++;
-    port.postMessage({ type: 'replaceClip', id, stream: look.src, from: m0 - RAMP, to: m1 + RAMP, word_start: m.start, word_end: m.end, speaker: m.speaker ?? null, text: m.text });
+    port.postMessage({ type: 'replaceClip', id, stream: look.src, from, to, word_start: m.start, word_end: m.end, speaker: m.speaker ?? null, text: m.text });
   }
 
   function onReplacePatch(msg) {
@@ -1801,9 +1807,27 @@
         transcriptCache.load(look.key, look.words).then((ok) => {
           look.cacheLoaded = ok;
           look.savedVersion = look.words.version; // nothing new to save yet
+          // A transcript saved by the built-in model (words not placed by
+          // forced alignment) is weaker than what the companion makes; see
+          // the upgrade below.
+          const ws = look.words.words;
+          look.cacheFromBrowser = ok && ws.length > 0 && ws.filter((w) => w.aligned).length < ws.length / 2;
           updateBadges();
         });
       }
+    }
+    // Upgrade a saved built-in transcript once the companion is running:
+    // keep its words for now (so nothing is unfiltered) but forget which
+    // stretches were done, except the next 15 s, so the companion re-does
+    // the rest and its words replace the old ones window by window.
+    if (look.cacheFromBrowser && state.companion?.state === 'ready' && !look.upgraded) {
+      look.upgraded = true;
+      const p = v.currentTime;
+      look.words.covered = look.words.covered
+        .filter(([a, b]) => a - 0.05 <= p && p <= b)
+        .map(([a, b]) => [a, Math.min(b, p + 15)]);
+      look.words.version++;
+      if (SILENT_TEST) testLog.upgradedAt = +p.toFixed(1);
     }
     if (look.key && performance.now() - look.lastSave > SAVE_EVERY_MS) {
       look.lastSave = performance.now();
@@ -1863,6 +1887,7 @@
         alignedWords: state.alignedWords || 0,
         speakers: look ? [...new Set(look.words.words.map((w) => w.speaker).filter((x) => x != null))] : [],
         voices: look ? look.voices || {} : {},
+        upgradedAt: testLog.upgradedAt ?? null,
         speakerWords: look ? look.words.words.slice(0, 400).map((w) => [w.text.trim(), +w.start.toFixed(2), w.speaker ?? null]) : [],
         clips: clipStats,
         patches: patchStats,

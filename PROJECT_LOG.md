@@ -25,4 +25,6 @@
 | 11/18/2026 | Roadmap step 10.1 (first try): set up OpenVoice v2 voice cloning in the companion, measured speed and memory on six test voices, and made listening samples | 0.3 |
 | 11/18/2026 | Tested the extension on YouTube | 0.35 |
 | 11/18/2026 | "Replace" mode, rough first pass at steps 11–12: swears replaced by a clean word in the speaker's cloned voice while the music keeps playing; all test swears replaced on time | 0.45 |
-| **Total** | | **13.85** |
+| 11/18/2026 | Tested Replace mode on YouTube | 0.25 |
+| 11/18/2026 | Fixed Replace mode after the first real test: old built-in transcripts are re-done by the companion, the speaker is found when the replacement is built, one patch per swear, popup warns without the companion; re-tested on the same video (14 swears caught, 9 replaced in the speaker's voice) | 0.35 |
+| **Total** | | **14.45** |
