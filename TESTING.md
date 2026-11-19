@@ -9,6 +9,17 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Roadmap step 10.1 · voice cloning, first try (OpenVoice v2)
+
+- [ ] **Listen.** Open `voice-demos/index.html` in a browser (or play the
+      WAVs in `voice-demos/<speaker>/`). For each speaker compare the real
+      voice with "converted" words: does it sound like that person? Note
+      which speakers/words work and which don't.
+- [ ] **On a real voice (optional).** After watching a talk with the
+      companion running (so it saved voice samples), run
+      `companion/.venv/bin/python companion/tests/voice_demo.py --voices ~/Library/Application\ Support/CleanEars/voices/<video ID>`
+      and listen to the new folders in `voice-demos/`.
+
 ## Version 1.15.0 · roadmap steps 8.2–9 (stable speakers, voice samples)
 
 - [ ] **Same numbers after a reload.** On a two-person video, note who is

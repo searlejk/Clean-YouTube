@@ -548,12 +548,26 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
 
 ## 10. Voice clone (small model, one voice profile per speaker)
 
-- [ ] 10.1 Pick a **small** voice-cloning model that runs on a normal laptop
+- [~] 10.1 Pick a **small** voice-cloning model that runs on a normal laptop
       without overwhelming it. Candidates: F5-TTS small, XTTS-v2, OpenVoice,
       or any TTS + an RVC voice converter, run in the companion.
       Write down download size, memory use, and speed on this Mac.
       *Done when:* one placeholder word in a sampled voice generates in
       under 1 s, using under ~1 GB of memory.
+      *First candidate, OpenVoice v2* ([companion/voice_clone.py](companion/voice_clone.py)):
+      macOS `say` speaks the word in a stock voice (female/male picked from
+      the speaker's pitch) and OpenVoice's tone-colour converter repaints it
+      with the speaker's colour from their step-9 sample. Downloads: PyTorch
+      + librosa (the companion env grew to 1.3 GB), OpenVoice code (MIT,
+      `companion/vendor/`), v2 converter 131 MB. Measured on 6 test speakers
+      ([tests/voice_demo.py](companion/tests/voice_demo.py)): **0.50–0.79 s
+      per word on the CPU** (target < 1 s ✓); whole process peaked at 1.5 GB
+      including PyTorch and the voice-fingerprint model (target ~1 GB ✗).
+      By voice-fingerprint similarity the converted clips did **not** sound
+      more like the speaker than the stock voice (sentence 0.25–0.82 →
+      0.16–0.50); the test speakers are macOS voices themselves, so this is
+      only a rough guide. Listening files: `voice-demos/index.html`.
+      Next: listen, then compare another model (F5-TTS or XTTS-v2).
 - [ ] 10.2 One shared model, one profile per speaker: each speaker gets their
       own voice sample/embedding, not a separate full model. Cap at a few
       voices (e.g. 4) to protect the user's computer.
