@@ -23,4 +23,6 @@
 | 11/18/2026 | Roadmap step 8.1: speaker labels for each word (voice-fingerprint model + clustering in the companion); 100% of words right on three two-person test conversations and end to end through the extension | 0.3 |
 | 11/18/2026 | Roadmap steps 8.2–9: speakers keep their label across pauses, seeks, returns and page reloads; the companion collects a clean, swear-free voice sample of each speaker (100% the right person in tests) ready for voice cloning | 0.45 |
 | 11/18/2026 | Roadmap step 10.1 (first try): set up OpenVoice v2 voice cloning in the companion, measured speed and memory on six test voices, and made listening samples | 0.3 |
-| **Total** | | **13.05** |
+| 11/18/2026 | Tested the extension on YouTube | 0.35 |
+| 11/18/2026 | "Replace" mode, rough first pass at steps 11–12: swears replaced by a clean word in the speaker's cloned voice while the music keeps playing; all test swears replaced on time | 0.45 |
+| **Total** | | **13.85** |

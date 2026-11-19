@@ -114,6 +114,7 @@
     }
     applySettings(false, prev);
     updateFullAudio();
+    if (changes.mode) warmReplace();
   });
 
   function applySettings(initial, prev = {}) {
@@ -498,6 +499,10 @@
       onStemClip(msg);
       return;
     }
+    if (msg.type === 'replace_clip') {
+      onReplacePatch(msg);
+      return;
+    }
     if (msg.type === 'voices') {
       // How much clean voice the companion has per speaker (step 9).
       const look = looks.get(msg.stream);
@@ -516,7 +521,10 @@
       const wasReady = state.companion?.state === 'ready';
       state.companion = msg;
       updateFullAudio();
-      if (!wasReady && msg.state === 'ready') sendKwsWords();
+      if (!wasReady && msg.state === 'ready') {
+        sendKwsWords();
+        warmReplace();
+      }
       if (wasReady !== (msg.state === 'ready')) {
         storedNeed = null; // different engine, different speed
         loadStoredNeed();
@@ -1331,6 +1339,65 @@
     port.postMessage({ type: 'stemClip', id, stream: look.src, from, to, vocals: SILENT_TEST });
   }
 
+  // ───── Replace mode (rough first pass at roadmap 11–12) ─────
+  // For each swear, the companion sends the audio for the muted gap: the
+  // background plus a clean word in the speaker's voice (or the background
+  // only). It's played on the same clock as the mute, with matching fades,
+  // into the path after the mute so it isn't silenced itself.
+  const patchStats = { requested: 0, ready: 0, played: 0, late: 0, replaced: 0, musicOnly: 0, failed: 0, last: [] };
+  const patchRequests = new Map(); // id -> { look, key }
+
+  function requestReplacePatch(look, key, m, m0, m1) {
+    if (!fullAudioOn || !port) return;
+    look.patches = look.patches || new Map();
+    if (look.patches.has(key)) return;
+    const id = nextClipId++;
+    look.patches.set(key, { requestedAt: performance.now() });
+    patchRequests.set(id, { look, key });
+    patchStats.requested++;
+    port.postMessage({ type: 'replaceClip', id, stream: look.src, from: m0 - RAMP, to: m1 + RAMP, word_start: m.start, word_end: m.end, speaker: m.speaker ?? null, text: m.text });
+  }
+
+  function onReplacePatch(msg) {
+    const req = patchRequests.get(msg.id);
+    patchRequests.delete(msg.id);
+    if (!req || !ctx) return;
+    if (msg.error || !msg.patch) {
+      patchStats.failed++;
+      return;
+    }
+    patchStats.ready++;
+    if (msg.replaced) patchStats.replaced++;
+    else patchStats.musicOnly++;
+    patchStats.last.unshift({ at: +msg.start.toFixed(2), replacement: msg.replacement, why: msg.why });
+    patchStats.last.length = Math.min(patchStats.last.length, 10);
+    const v = videoForSrc(req.look.src);
+    const when = req.look.sync.heardAt(msg.start);
+    if (!v || when == null) return;
+    const buf = toAudioBuffer(base64ToInt16(msg.patch), msg.channels, msg.rate);
+    const at = when + currentDelay;
+    const now = ctx.currentTime;
+    if (at + buf.duration <= now + 0.02) {
+      patchStats.late++;
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = v.playbackRate || 1;
+    src.connect(flushGain); // after the mute, before the flush/ready gates
+    if (at >= now) src.start(at);
+    else src.start(now, now - at); // already started: join part-way
+    patchStats.played++;
+    // Stop it if the viewer seeks or pauses before it plays out.
+    const stop = () => {
+      try {
+        src.stop();
+      } catch {}
+    };
+    v.addEventListener('seeking', stop, { once: true });
+    v.addEventListener('pause', stop, { once: true });
+  }
+
   function base64ToInt16(b64) {
     const bin = atob(b64);
     const out = new Int16Array(bin.length >> 1);
@@ -1501,6 +1568,11 @@
   // The swear spotter in the companion (step 6) works from the same list.
   function sendKwsWords() {
     if (port && state.companion?.state === 'ready') port.postMessage({ type: 'kwsWords', words: settings.words });
+  }
+
+  // Replace mode: have the companion load its voice model before the first swear.
+  function warmReplace() {
+    if (settings.mode === 'replace' && port && state.companion?.state === 'ready') port.postMessage({ type: 'replaceWarmup' });
   }
 
   function updateFullAudio() {
@@ -1696,7 +1768,8 @@
       look.scheduled.add(key);
       if (SILENT_TEST) testLog.mutes.push({ text: m.text, aligned: !!m.aligned, spotted: !!m.spotted, wordStart: +m.start.toFixed(2), wordEnd: +m.end.toFixed(2), coverFrom: +m0.toFixed(2), coverTo: +m1.toFixed(2), playhead: +t.toFixed(2), leadSeconds: +(m0 - t).toFixed(2) });
       addInterval(c0 + currentDelay, c1 + currentDelay, m);
-      requestStemClip(look, key, m0 - CLIP_MARGIN, m1 + CLIP_MARGIN);
+      if (settings.mode === 'replace') requestReplacePatch(look, key, m, m0, m1);
+      else requestStemClip(look, key, m0 - CLIP_MARGIN, m1 + CLIP_MARGIN);
       updateBadges(); // refresh the "N filtered" count
     }
   }
@@ -1792,6 +1865,7 @@
         voices: look ? look.voices || {} : {},
         speakerWords: look ? look.words.words.slice(0, 400).map((w) => [w.text.trim(), +w.start.toFixed(2), w.speaker ?? null]) : [],
         clips: clipStats,
+        patches: patchStats,
         stems: look ? look.stems || [] : [],
         stemsAhead: look && v ? stemsAhead(look, v.currentTime) : null,
         heard: state.lastText || '', // last delay-mode transcript text

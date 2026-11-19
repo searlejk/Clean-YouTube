@@ -24,6 +24,7 @@ function render(s) {
   $('enabled').checked = s.enabled;
   for (const r of document.querySelectorAll('input[name="mode"]')) r.checked = r.value === s.mode;
   $('volume-row').style.display = s.mode === 'bleep' ? '' : 'none';
+  $('replace-hint').style.display = s.mode === 'replace' ? '' : 'none';
   $('bleepVolume').value = s.bleepVolume;
   $('lookahead').checked = s.lookahead;
   $('autoDelay').checked = s.autoDelay;
@@ -59,6 +60,7 @@ async function init() {
     r.addEventListener('change', () => {
       save({ mode: r.value });
       $('volume-row').style.display = r.value === 'bleep' ? '' : 'none';
+      $('replace-hint').style.display = r.value === 'replace' ? '' : 'none';
     });
   }
   $('bleepVolume').addEventListener('change', (e) => save({ bleepVolume: Number(e.target.value) }));

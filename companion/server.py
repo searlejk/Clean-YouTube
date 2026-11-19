@@ -89,6 +89,8 @@ class Engine:
         from voices import VoiceCollector
 
         self.voices = VoiceCollector()
+        self.replacer = None  # replacement patches (Replace mode), made on first use
+        self.clone_pool = ThreadPoolExecutor(max_workers=1)
         self.stream_words = {}
         self.word_list = []
         self.voices_updated = {}
@@ -257,6 +259,7 @@ class Engine:
             log.exception("voice sample update failed")
             return
         status = self.voices.status(stream)
+        asyncio.create_task(self.prepare_voices(stream))
         send = self.stem_owners.get(stream)
         if send and status:
             try:
@@ -273,6 +276,32 @@ class Engine:
             safe = "".join(c for c in str(video) if c.isalnum() or c in "-_")[:64]
             if safe:
                 self.voices.save(self.stems, stream, VOICES / safe)
+
+    def _ensure_replacer(self):
+        if self.replacer is None:
+            from replace import Replacer
+
+            self.replacer = Replacer(self.stems, self.voices)
+        return self.replacer
+
+    async def warm_replacer(self):
+        loop = asyncio.get_running_loop()
+        try:
+            r = self._ensure_replacer()
+            t = time.perf_counter()
+            await loop.run_in_executor(self.clone_pool, r._cloner)
+            log.info("voice model for Replace mode ready in %.1f s", time.perf_counter() - t)
+        except Exception:
+            log.exception("could not load the voice model")
+
+    async def prepare_voices(self, stream):
+        """Work out each ready speaker's voice ahead of their first swear."""
+        if self.replacer is None or self.replacer.cloner is None:
+            return
+        loop = asyncio.get_running_loop()
+        for spk, st in self.voices.status(stream).items():
+            if st["ready"]:
+                await loop.run_in_executor(self.clone_pool, self.replacer._speaker_voice, stream, spk)
 
     async def report(self, every=60):
         while True:
@@ -392,6 +421,54 @@ async def stem_clip_job(engine, msg, send):
         pass
 
 
+def dump_patch(engine, stream, t0, t1, res):
+    import soundfile
+
+    d = Path(os.environ["CLEAN_EARS_DUMP_PATCHES"])
+    d.mkdir(parents=True, exist_ok=True)
+    got = engine.stems.get(stream, res["start"], res["start"] + res["audio"].shape[1] / res["rate"])
+    tag = f"{t0:08.2f}"
+    if got is not None:
+        soundfile.write(str(d / f"{tag}-1-original.wav"), (got[0] + got[1]).T, res["rate"])
+    soundfile.write(str(d / f"{tag}-2-{res['replacement'] or 'music-only'}.wav".replace(" ", "_")), res["audio"].T, res["rate"])
+
+
+async def replace_clip_job(engine, msg, send):
+    """Replace mode: the audio to play in a swear's gap (background + the
+    replacement word in the speaker's voice, or background only).
+    {type: 'replace_clip', id, stream, from, to, word_start, word_end, speaker,
+    text} -> {type: 'replace_clip', id, start, rate, channels, patch, replaced,
+    replacement, why} or {..., error}."""
+    reply = {"type": "replace_clip", "id": msg.get("id"), "stream": msg.get("stream")}
+    try:
+        t0, t1 = float(msg["from"]), float(msg["to"])
+        if not (0 < t1 - t0 <= CLIP_MAX_S):
+            raise ValueError("bad clip length")
+        deadline = time.monotonic() + CLIP_WAIT_S
+        while engine.stems.clip(msg["stream"], t0, t1) is None:
+            if time.monotonic() > deadline or not engine.stems.received(msg["stream"], t0, t1):
+                raise RuntimeError("not separated")
+            await asyncio.sleep(0.05)
+        engine._ensure_replacer()
+        spk = msg.get("speaker")
+        res = await asyncio.get_running_loop().run_in_executor(
+            engine.clone_pool, engine.replacer.build, msg["stream"], t0, t1,
+            float(msg.get("word_start", t0)), float(msg.get("word_end", t1)), None if spk is None else int(spk), str(msg.get("text", "")))
+        if res is None:
+            raise RuntimeError("not separated")
+        if os.environ.get("CLEAN_EARS_DUMP_PATCHES"):  # debugging: before/after WAVs for each swear
+            dump_patch(engine, msg["stream"], t0, t1, res)
+        reply.update(start=res["start"], rate=res["rate"], channels=2, patch=int16_b64(res["audio"]),
+                     replaced=res["replaced"], replacement=res["replacement"], why=res["why"])
+        log.info("replace patch at %.2f s: %s (%s)", t0, res["replacement"] or "music only", res["why"])
+    except Exception as e:
+        reply["error"] = str(e)
+    try:
+        await send(reply)
+    except websockets.ConnectionClosed:
+        pass
+
+
 async def voice_stem(engine, stream, offset, n):
     """The separated voice for n samples (16 kHz) from `offset`, as mono 16 kHz,
     waiting if that stretch is still being separated; else None. A window far
@@ -495,6 +572,13 @@ async def handle(ws, engine):
                 if engine.spotter is not None:
                     engine.spotter.set_words(msg.get("words") or [])
                     log.info("swear spotting: %d patterns from the word list", len(engine.spotter.patterns))
+            elif kind == "replace_warmup" and engine.stems:
+                # Replace mode is on: load the voice model now, not at the first swear.
+                asyncio.create_task(engine.warm_replacer())
+            elif kind == "replace_clip" and engine.stems:
+                task = asyncio.create_task(replace_clip_job(engine, msg, send))
+                tasks.add(task)
+                task.add_done_callback(tasks.discard)
             elif kind == "stem_clip" and engine.stems:
                 task = asyncio.create_task(stem_clip_job(engine, msg, send))
                 tasks.add(task)

@@ -39,7 +39,9 @@
       <div class="segmented" role="radiogroup">
         <label><input type="radio" name="mode" value="bleep" /><span>Bleep</span></label>
         <label><input type="radio" name="mode" value="silence" /><span>Silence</span></label>
+        <label><input type="radio" name="mode" value="replace" /><span>Replace</span></label>
       </div>
+      <p class="hint" id="replace-hint">Experimental, needs the companion app: says a clean word (“shoot”) in the speaker's own voice while the music keeps playing. Until it has a voice sample for a speaker, their swears go quiet but the music stays.</p>
       <div id="volume-row" class="row">
         <label for="bleepVolume">Bleep volume</label>
         <input type="range" id="bleepVolume" min="0.05" max="0.6" step="0.05" />

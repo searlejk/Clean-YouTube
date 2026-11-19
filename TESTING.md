@@ -9,6 +9,21 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.16.0 · Replace mode (rough first pass at steps 11–12)
+
+Start the companion, reload Clean Ears, and in the popup choose **Replace**.
+
+- [ ] **On a YouTube video with swearing** (a talk, vlog or podcast where
+      people talk normally for a while before swearing): for the first
+      minute or so swears just go quiet with the music still playing (no
+      voice sample yet); after that each swear should be replaced by a clean
+      word ("shoot", "fudge", "dang"…) in roughly that person's voice.
+- [ ] **How does it sound?** Note per video: does the word sound like the
+      speaker, is it the right length, is it too loud/quiet, any clicks?
+- [ ] **Save examples (optional):** start the companion with
+      `CLEAN_EARS_DUMP_PATCHES=~/Desktop/patches companion/start.sh` to save
+      a before/after WAV pair for every swear.
+
 ## Roadmap step 10.1 · voice cloning, first try (OpenVoice v2)
 
 - [ ] **Listen.** Open `voice-demos/index.html` in a browser (or play the

@@ -578,16 +578,31 @@ Needed so that in a podcast or interview, a swear by speaker B is replaced in
 
 ## 11. Fit to gap (time-stretch)
 
-- [ ] 11.1 Stretch or compress the cached word to the swear's exact length
+- [~] 11.1 Stretch or compress the cached word to the swear's exact length
       (WSOLA / phase vocoder), keeping pitch
-- [ ] 11.2 Match loudness to the surrounding speech
+- [~] 11.2 Match loudness to the surrounding speech
+      *Rough version (v1.16.0, [companion/replace.py](companion/replace.py)):*
+      phase-vocoder stretch to the swear's exact length (at most 1.8× either
+      way), loudness matched to the separated voice over the swear.
 
 ## 12. Mixer (mute or swap vocals, crossfade, add background back)
 
 - [x] 12.1 Mute / bleep the full mix with fades (current version)
-- [ ] 12.2 Mute only the vocal stem so music keeps playing
-- [ ] 12.3 Swap in the replacement word with crossfades, using the cached
+- [~] 12.2 Mute only the vocal stem so music keeps playing
+- [~] 12.3 Swap in the replacement word with crossfades, using the cached
       word **of the speaker who said the swear** (step 8's label)
+      *Rough version (v1.16.0): "Replace" mode.* For each swear the companion
+      builds a patch for exactly the muted gap: the separated background plus
+      the replacement word (fudge, shoot, dang, son of a gun, …) made by
+      OpenVoice v2 in that speaker's voice from their step-9 sample; without
+      a ready sample, background only (music kept, voice quiet). The
+      extension plays it on the mute's clock with matching 8 ms fades.
+      The voice model loads as soon as Replace is chosen, and each speaker's
+      voice is prepared when their sample is ready. Test page (one voice
+      talking, then swearing): all 3 swears replaced and played on time
+      ("shoot" 1.98 s to make, "fudge" 0.76 s, "dang" 0.68 s), none missed;
+      the first try was late (15 s to load the model) before the warm-up.
+      Before/after audio: `voice-demos/index.html`.
 - [ ] 12.4 When unsure, don't guess: if the speaker is uncertain, voices
       overlap, or a new speaker has no profile yet, fall back to silence or a
       bleep rather than risk the wrong voice.

@@ -47,7 +47,8 @@
     },
   };
   window.chrome = {
-    storage: { sync: { get: async (d) => ({ ...d }) }, local, onChanged: { addListener() {} } },
+    // ?mode=replace (etc.) overrides a setting for testing.
+    storage: { sync: { get: async (d) => ({ ...d, ...Object.fromEntries([...new URLSearchParams(location.search)].filter(([k]) => k in d)) }) }, local, onChanged: { addListener() {} } },
     runtime: {
       id: 'harness',
       getURL: (p) => '../../' + p,

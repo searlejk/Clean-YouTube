@@ -74,6 +74,14 @@ chrome.runtime.onConnect.addListener((port) => {
       // can be sent again when the companion reconnects.
       kwsWords = msg.words || [];
       if (companion.ready) companion.forward({ type: 'kws_words', words: kwsWords });
+    } else if (msg.type === 'replaceWarmup') {
+      if (companion.ready) companion.forward({ type: 'replace_warmup' });
+    } else if (msg.type === 'replaceClip') {
+      // Replace mode: the companion builds the audio for a swear's gap.
+      if (!companion.ready) return safePost(port, { type: 'replace_clip', id: msg.id, error: 'companion not running' });
+      const job = nextJob++;
+      clipJobs.set(job, { session, id: msg.id });
+      companion.forward({ ...msg, type: 'replace_clip', id: job });
     } else if (msg.type === 'stemClip') {
       if (!companion.ready) return safePost(port, { type: 'stem_clip', id: msg.id, error: 'companion not running' });
       const job = nextJob++;
@@ -212,7 +220,7 @@ const companion = {
         if (this.ready && !wasReady && kwsWords) this.forward({ type: 'kws_words', words: kwsWords });
         if (!this.ready && m.state !== 'loading') for (const session of configs.keys()) ensureWorker(session);
         this.broadcast();
-      } else if (m.type === 'stem_clip') {
+      } else if (m.type === 'stem_clip' || m.type === 'replace_clip') {
         const job = clipJobs.get(m.id);
         clipJobs.delete(m.id);
         const port = job && ports.get(job.session);
