@@ -78,6 +78,8 @@
       text: words.slice(a, b + 1).map((w) => w.text.trim()).join(' '),
       rule,
       aligned: words.slice(a, b + 1).every((w) => w.aligned),
+      speaker: words[a].speaker ?? null, // who said it (step 8), from the first word
+      speakerConf: Math.min(...words.slice(a, b + 1).map((w) => w.speakerConf ?? 0)),
     });
 
     for (let i = 0; i < words.length; i++) {

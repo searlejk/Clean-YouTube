@@ -36,6 +36,10 @@ W2V=https://huggingface.co/onnx-community/wav2vec2-base-960h-ONNX/resolve/main
 [ -s models/wav2vec2-base-960h.vocab.json ] || curl -fsSL -o models/wav2vec2-base-960h.vocab.json \
   https://huggingface.co/facebook/wav2vec2-base-960h/resolve/main/vocab.json
 
+echo "Downloading the speaker-fingerprint model (WeSpeaker ResNet34, ~27 MB)…"
+[ -s models/wespeaker_en_voxceleb_resnet34_LM.onnx ] || curl -fsSL -o models/wespeaker_en_voxceleb_resnet34_LM.onnx \
+  https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx
+
 echo "Downloading and checking the $MODEL speech model…"
 .venv/bin/python server.py --check --model "$MODEL"
 

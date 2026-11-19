@@ -120,13 +120,19 @@ class Run:
 
 
 class StemStore:
-    def __init__(self, separator):
+    def __init__(self, separator, embedder=None):
         self.sep = separator
+        self.embedder = embedder  # voice fingerprints for speaker labels (step 8)
         self.streams = {}  # stream -> {"runs": [Run], "playhead": float|None}
         self.stats = {"blocks": 0, "audio_s": 0.0, "busy_s": 0.0}
 
     def _stream(self, stream):
-        return self.streams.setdefault(stream, {"runs": [], "playhead": None})
+        st = self.streams.setdefault(stream, {"runs": [], "playhead": None})
+        if self.embedder is not None and "diar" not in st:
+            from diarize import Diarizer
+
+            st["diar"] = Diarizer(self.embedder)
+        return st
 
     def add(self, stream, t, rate, pcm):
         st = self._stream(stream)
@@ -180,9 +186,14 @@ class StemStore:
             background = seg - vocals  # exact: vocals + background == the original audio
             a, b = out_a - seg_a, out_b - seg_a
             speech = []
+            v16 = resample(vocals[:, a:b].mean(axis=0, keepdims=True), max(1, round((b - a) * 16000 / run.rate)))[0]
             if get_speech_timestamps is not None:
-                v16 = resample(vocals[:, a:b].mean(axis=0, keepdims=True), max(1, round((b - a) * 16000 / run.rate)))[0]
                 speech = [(s["start"] / 16000, s["end"] / 16000) for s in get_speech_timestamps(v16, VAD)]
+            # Voice fingerprints for this block's speech (speaker labels, step 8).
+            diar = self.streams.get(stream, {}).get("diar")
+            if diar is not None:
+                t0b = run.start + out_a / run.rate
+                diar.add(t0b, v16, [[t0b + s0, t0b + s1] for s0, s1 in speech] if get_speech_timestamps is not None else None)
             self.stats["busy_s"] += time.perf_counter() - t0
             self.stats["blocks"] += 1
             self.stats["audio_s"] += (out_b - out_a) / run.rate

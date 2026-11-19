@@ -17,15 +17,29 @@
   function serialize(words) {
     return {
       v: 2,
-      // A 4th element of 1 marks a word placed by forced alignment (step 5.2).
-      words: words.words.map((w) => (w.aligned ? [w.text, Math.round(w.start * 1000), Math.round(w.end * 1000), 1] : [w.text, Math.round(w.start * 1000), Math.round(w.end * 1000)])),
+      // Optional 4th element: 1 = placed by forced alignment (step 5.2);
+      // 5th and 6th: speaker label and confidence ×1000 (step 8).
+      words: words.words.map((w) => {
+        const row = [w.text, Math.round(w.start * 1000), Math.round(w.end * 1000)];
+        if (w.aligned || w.speaker != null) row.push(w.aligned ? 1 : 0);
+        if (w.speaker != null) row.push(w.speaker, Math.round((w.speakerConf || 0) * 1000));
+        return row;
+      }),
       covered: words.covered.map(([a, b]) => [Math.round(a * 1000), Math.round(b * 1000)]),
     };
   }
 
   function merge(words, data) {
     if (!data || data.v !== 2) return false;
-    const all = data.words.map(([text, s, e, a]) => (a ? { text, start: s / 1000, end: e / 1000, aligned: true } : { text, start: s / 1000, end: e / 1000 }));
+    const all = data.words.map(([text, s, e, a, spk, conf]) => {
+      const w = { text, start: s / 1000, end: e / 1000 };
+      if (a) w.aligned = true;
+      if (spk != null) {
+        w.speaker = spk;
+        w.speakerConf = (conf || 0) / 1000;
+      }
+      return w;
+    });
     for (const [a, b] of data.covered) {
       const from = a / 1000;
       const to = b / 1000;

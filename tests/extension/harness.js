@@ -5,7 +5,8 @@ const H = (window.H = { ready: false, error: null });
 const AHEAD = Number(new URLSearchParams(location.search).get('ahead')) || 20;
 document.getElementById('start').addEventListener('click', async () => {
   try {
-    const bytes = new Uint8Array(await (await fetch('../lookahead/fixtures/long.webm')).arrayBuffer());
+    const file = new URLSearchParams(location.search).get('file') || 'long.webm'; // ?file=interview-mixed.webm
+    const bytes = new Uint8Array(await (await fetch('../lookahead/fixtures/' + file)).arrayBuffer());
     const clusters = [];
     for (let i = 0; i + 4 < bytes.length; i++) if (bytes[i] === 0x1f && bytes[i + 1] === 0x43 && bytes[i + 2] === 0xb6 && bytes[i + 3] === 0x75) {
       let p = i + 4 + (8 - Math.floor(Math.log2(bytes[i + 4])));

@@ -482,7 +482,12 @@
         // already on the audio; only Whisper's own times need the bias fix.
         const words = (msg.words || []).map((w) => {
           const l = w.aligned ? NO_LAG : lag;
-          return { text: w.text, start: w.start - l.start, end: w.end - l.end, aligned: !!w.aligned };
+          const out = { text: w.text, start: w.start - l.start, end: w.end - l.end, aligned: !!w.aligned };
+          if (w.speaker != null) {
+            out.speaker = w.speaker;
+            out.speakerConf = w.speaker_conf ?? 0;
+          }
+          return out;
         });
         if (msg.engine === 'companion') state.alignedWords = (state.alignedWords || 0) + (msg.aligned || 0);
         job.resolve({ ...msg, words });
@@ -608,7 +613,7 @@
       }
       state.caught++;
       reportBlocked();
-      entry.recent = { word: match.text, rule: match.rule, by, score: match.score, late: s < now, at: Date.now() };
+      entry.recent = { word: match.text, rule: match.rule, by, score: match.score, speaker: match.speaker ?? null, late: s < now, at: Date.now() };
       state.recent.unshift(entry.recent);
       state.recent.length = Math.min(state.recent.length, 10);
     }
@@ -1774,6 +1779,8 @@
         fullAudio: fullAudioOn,
         asrSource: state.asrSource,
         alignedWords: state.alignedWords || 0,
+        speakers: look ? [...new Set(look.words.words.map((w) => w.speaker).filter((x) => x != null))] : [],
+        speakerWords: look ? look.words.words.slice(0, 400).map((w) => [w.text.trim(), +w.start.toFixed(2), w.speaker ?? null]) : [],
         clips: clipStats,
         stems: look ? look.stems || [] : [],
         stemsAhead: look && v ? stemsAhead(look, v.currentTime) : null,

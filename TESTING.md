@@ -9,6 +9,15 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Version 1.14.0 · roadmap step 8.1 (who's speaking)
+
+Re-run `companion/install.sh` once (it downloads the 27 MB speaker model).
+
+- [ ] **Two-person video.** On an interview or podcast with swearing, hover
+      caught words in the popup: the tooltip says "said by speaker 1/2", and
+      the same person keeps the same number through the video. Note any video
+      where it mixes the two up.
+
 ## Version 1.13.0 · roadmap steps 6–7 (swear spotter, allow-list)
 
 - [ ] **Never filter.** The popup has a "Never filter" box with names like

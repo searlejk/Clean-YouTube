@@ -485,9 +485,29 @@ extension sends it to a local companion app that runs the heavy models.
 Needed so that in a podcast or interview, a swear by speaker B is replaced in
 **B's** voice, never in speaker A's.
 
-- [ ] 8.1 Label each word with a speaker (speaker embeddings + clustering,
+- [x] 8.1 Label each word with a speaker (speaker embeddings + clustering,
       pyannote in the companion app).
       *Done when:* on a 2-person interview, ≥ 95% of words get the right speaker.
+      *Result (v1.14.0):* instead of pyannote (PyTorch + an account token), a
+      27 MB ONNX voice-fingerprint model (WeSpeaker ResNet34, VoxCeleb) with
+      Kaldi-style features and online clustering in numpy
+      ([companion/diarize.py](companion/diarize.py)). Fingerprints every 0.5 s
+      over 1.5 s of the separated voice's speech (from the voice detector),
+      grouped as they arrive and re-assigned to the final speaker profiles
+      when words are labelled; each word also gets a confidence (how much
+      better its speaker matched than the next one) for 12.4's fallback.
+      Three ~75 s two-person conversations of macOS voices
+      ([companion/tests/interview_dataset.py](companion/tests/interview_dataset.py),
+      [diarization_accuracy.py](companion/tests/diarization_accuracy.py)):
+      woman/man, two men, two women all **100%** of words right; with music
+      at equal loudness (through separation) 100%, 91.3%, 100%. About 1 s of
+      work per 75 s of audio. End to end through the extension: 174/174 words
+      right. Limits: two voices from the same macOS synthesizer family that
+      differ mainly in pitch (Eddy/Reed, Flo/Shelley) scored 52–78%; the
+      model rates them more alike than each voice to itself. Merging
+      near-duplicate speaker profiles was tried and made things worse, so
+      it's off. Labels are kept on words, in saved transcripts and matches,
+      and shown in the popup ("said by speaker 2").
 - [ ] 8.2 Stable identities: the same person keeps the same label for the
       whole video, including after pauses, seeks, and when someone returns
       after a long gap.

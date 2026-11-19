@@ -231,7 +231,7 @@ async function pollStatus() {
     const li = document.createElement('li');
     li.textContent = mask(r.word) + (r.by === 'both' ? ' ✓✓' : '');
     const by = r.by === 'both' ? 'Whisper and the swear spotter' : r.by === 'spotter' ? 'the swear spotter (Whisper heard something else)' : 'Whisper + your word list';
-    li.title = `Caught by ${by}; matched “${r.rule}”` + (r.late ? ' (partly late)' : '');
+    li.title = `Caught by ${by}; matched “${r.rule}”` + (r.speaker != null ? `; said by speaker ${r.speaker + 1}` : '') + (r.late ? ' (partly late)' : '');
     if (r.late) li.classList.add('late');
     recent.appendChild(li);
   }

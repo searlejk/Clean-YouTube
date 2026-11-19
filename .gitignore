@@ -14,3 +14,5 @@ __pycache__/
 companion/models/
 companion/tests/music/
 companion/tests/kws_data/
+tests/lookahead/fixtures/interview-*.webm
+tests/lookahead/fixtures/interview-*.json

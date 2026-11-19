@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Clean Ears \u2013 YouTube Profanity Filter",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "Delays YouTube a couple of seconds, transcribes the audio locally with Whisper, and bleeps or silences the swear words you choose.",
   "minimum_chrome_version": "116",
   "permissions": [

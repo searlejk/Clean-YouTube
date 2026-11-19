@@ -124,8 +124,16 @@ class Engine:
 
             sep = Separator("Kim_Vocal_2")
             sep.separate(np.zeros((2, 44100), np.float32))  # warm-up (CoreML compiles on first run)
-            self.stems = StemStore(sep)
-            log.info("voice separation ready (%s, %s)", sep.name, sep.provider)
+            embedder = None
+            try:
+                from diarize import Embedder
+
+                embedder = Embedder()
+                embedder.embed(np.zeros(SR * 2, np.float32))  # warm-up
+            except Exception as e:
+                log.warning("speaker labels off: %s", e)
+            self.stems = StemStore(sep, embedder)
+            log.info("voice separation ready (%s, %s)%s", sep.name, sep.provider, "; speaker labels on" if embedder else "")
         except Exception as e:
             log.warning("voice separation off: %s", e)
 
@@ -275,6 +283,9 @@ async def transcribe_job(engine, msg, send):
         voice = await voice_stem(engine, msg.get("stream"), offset, len(samples))
         t0 = time.perf_counter()
         words, text, hits = await engine.transcribe(samples if voice is None else voice, offset)
+        diar = engine.stems.streams.get(msg.get("stream"), {}).get("diar") if engine.stems else None
+        if diar is not None and words:
+            diar.label_words(words)  # "speaker", "speaker_conf" (step 8)
         engine.from_voice += voice is not None
         reply = {"type": "transcribed", "id": msg.get("id"), "words": words, "text": text, "source": "mix" if voice is None else "vocals", "aligned": sum(1 for w in words if w.get("aligned")), "spotted": hits}
     except Exception as e:
