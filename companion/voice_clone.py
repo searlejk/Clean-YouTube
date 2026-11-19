@@ -26,17 +26,34 @@ def estimate_seconds(text):
     return 0.12 + 0.2 * syll
 
 
-def trim_silence(x, sr, level=0.02):
-    """Drop quiet padding at both ends (OmniVoice adds ~0.1 s each side)."""
+def trim_silence(x, sr, level=0.08, max_gap=0.15):
+    """Keep just the spoken word: the stretch of sound around the loudest
+    part, joining pieces less than `max_gap` apart, and dropping padding and
+    stray breaths/clicks separated from it by a pause."""
     if not len(x):
         return x
-    env = np.abs(x)
-    thr = level * float(env.max() or 1)
-    nz = np.where(env > thr)[0]
-    if not len(nz):
+    hop = max(1, int(0.01 * sr))
+    n = len(x) // hop
+    if n < 3:
         return x
-    a, b = max(0, nz[0] - int(0.01 * sr)), min(len(x), nz[-1] + int(0.02 * sr))
-    return x[a:b]
+    env = np.sqrt((x[: n * hop].reshape(n, hop) ** 2).mean(axis=1))
+    active = env > level * float(env.max() or 1)
+    peak = int(np.argmax(env))
+    gap = int(max_gap / 0.01)
+    a = b = peak
+    while True:  # grow left over short gaps
+        nxt = next((k for k in range(a - 1, max(-1, a - 1 - gap), -1) if active[k]), None)
+        if nxt is None:
+            break
+        a = nxt
+    while True:  # grow right
+        nxt = next((k for k in range(b + 1, min(n, b + 1 + gap)) if active[k]), None)
+        if nxt is None:
+            break
+        b = nxt
+    s0 = max(0, a * hop - int(0.015 * sr))
+    s1 = min(len(x), (b + 1) * hop + int(0.03 * sr))
+    return x[s0:s1]
 
 
 class OmniVoiceCloner:

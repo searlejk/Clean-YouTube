@@ -14,7 +14,9 @@ Settings (each group can be switched off in the editor):
   tone_on, tone       match the brightness/EQ of the original swear (0–1 strength)
   loud_on, loud_db    loudness: matched to the original swear, then ± dB
   quality_on, steps   OmniVoice decoding steps (more: slower, cleaner)
-  speed               speaking speed (1 = natural; 0.5 slower … 1.8 faster)
+  speed               how fast the made word is played (1 = as the model said
+                      it; >1 faster), pitch kept: the word is made once at its
+                      natural pace and stretched, so it's never cut
   allowed, take       seconds the substitute gets (None: as long as it needs
                       at that speed). Time beyond the swear is taken from the
                       words around it: "after", "before" or "both"; whatever it
@@ -40,16 +42,17 @@ DEFAULTS = {
 }
 
 
-def plan(swear, say, speed=1.0, allowed=None, take="after"):
-    """Where the substitute goes: (gap start, gap end, word seconds, natural
-    seconds at this speed, squeezed?). Same rules as the editor page's
-    timeline (companion/editor/index.html planGap)."""
-    from voice_clone import estimate_seconds
-
+def plan(swear, natural, speed=1.0, allowed=None, take="after"):
+    """Where the substitute goes. `natural`: the word's length at its natural
+    pace (seconds; measured once it's made, estimated before). Returns
+    (gap start, gap end, word seconds at this speed, overruns?). Same rules
+    as the editor page's timeline (companion/editor/index.html planGap).
+    The word is never cut: if it's longer than the time given it runs on
+    (and covers what's there), which the page shows."""
     start, end = swear["start"], swear["end"]
     swear_len = end - start
-    want = estimate_seconds(say) / max(0.3, float(speed or 1))
-    allow = max(0.15, float(allowed)) if allowed else max(swear_len, want)
+    word = natural / max(0.3, float(speed or 1))
+    allow = max(0.15, float(allowed)) if allowed else max(swear_len, word)
     extra = allow - swear_len
     if extra <= 0:
         g0, g1 = start, start + allow
@@ -60,8 +63,7 @@ def plan(swear, say, speed=1.0, allowed=None, take="after"):
     else:
         g0, g1 = start, start + allow
     g0 = max(0.0, g0)
-    word = min(want, g1 - g0)
-    return g0, g1, word, want, want > (g1 - g0) + 0.02
+    return g0, g1, word, word > (g1 - g0) + 0.02
 
 
 def _resample(x, a, b):
@@ -140,6 +142,7 @@ class Editor:
     def __init__(self):
         self.cloner = None
         self.prompts = {}  # (project dir, speaker, pieces) -> prompt
+        self.words = {}  # (prompt key, text, steps) -> word at natural pace, 48 kHz
 
     def _cloner(self):
         if self.cloner is None:
@@ -148,10 +151,38 @@ class Editor:
             self.cloner = OmniVoiceCloner()
         return self.cloner
 
+    def natural_word(self, project, spk, s, say):
+        """The substitute in the speaker's voice at its natural pace (made
+        once per word/voice/quality and kept), or (None, why)."""
+        ref, text, pieces = project.reference(spk, s["ref_seconds"] if s["ref_on"] else 6.0, s["ref_pieces"] if s["ref_on"] else None)
+        if ref is None or not text:
+            return None, "no voice sample for this speaker", None
+        key = (str(project.dir), spk, tuple(map(tuple, pieces)))
+        if key not in self.prompts:
+            self.prompts[key] = self._cloner().prompt(ref, 24000, text)
+        steps = int(s["steps"]) if s["quality_on"] else 12
+        wkey = (key, say.lower(), steps)
+        made = False
+        if wkey not in self.words:
+            import voice_clone as V
+
+            old = V.NUM_STEP
+            V.NUM_STEP = steps
+            try:
+                word, sr = self._cloner().say(say, self.prompts[key], duration=None)  # its own natural pace
+            finally:
+                V.NUM_STEP = old
+            self.words[wkey] = _resample(word, sr, SR)
+            made = True
+        ref_info = {"pieces": pieces, "seconds": round(sum(b - a for a, b in pieces), 2), "text": text}
+        return self.words[wkey], {"steps": steps, "made": made, "reference": ref_info}, key
+
     def render(self, project, index, settings, context=2.0):
         """Returns dict with 'context' (mix with the substitute in place,
         [2, n] 48 kHz), 'original' (same stretch untouched), 'word' (the
-        substitute alone) and info about what was done."""
+        substitute alone) and info about what was done. Speed, timing,
+        pitch, tone and loudness are applied to the kept natural-pace word,
+        so changing them doesn't remake it."""
         import voice_clone as V
 
         s = {**DEFAULTS, **(settings or {})}
@@ -159,14 +190,27 @@ class Editor:
         start, end, room_end, spk = sw["start"], sw["end"], sw["roomEnd"], sw["speaker"]
         say = (s["say"] or sw["say"]).strip()
         info = {"say": say, "speaker": spk}
-        gs, ge, word_len, want, squeezed = plan(sw, say, s["speed"], s["allowed"], s["take"])
-        info.update(gap=[round(gs, 3), round(ge, 3)], squeezed=squeezed, natural=round(want, 2))
-        c0, c1 = max(0.0, min(gs, start) - context), max(ge, room_end) + context
+        raw = None
+        if spk is None:
+            info["why"] = "speaker unknown: background only"
+        else:
+            raw, extra, _ = self.natural_word(project, spk, s, say)
+            if raw is None:
+                info["why"] = extra
+            else:
+                info.update(extra)
+        natural = len(raw) / SR if raw is not None else V.estimate_seconds(say)
+        speed = float(s["speed"] or 1)
+        gs, ge, word_len, overrun = plan(sw, natural, speed, s["allowed"], s["take"])
+        we = gs + word_len
+        info.update(gap=[round(gs, 3), round(ge, 3)], natural=round(natural, 3), word=round(word_len, 3), overrun=overrun)
+        cover0, cover1 = min(gs, start), max(ge, end, we if raw is not None else ge)
+        c0, c1 = max(0.0, cover0 - context), max(cover1, room_end) + context
         original = project.slice("mix", c0, c1)
         out = original.copy()
-        # The swear and the time given to the substitute are replaced by the background.
-        g0 = max(0, int((min(gs, start) - c0 - 0.03) * SR))
-        g1 = min(out.shape[1], int((max(ge, end) - c0 + 0.05) * SR))
+        # The swear and the time the substitute uses are replaced by the background.
+        g0 = max(0, int((cover0 - c0 - 0.03) * SR))
+        g1 = min(out.shape[1], int((cover1 - c0 + 0.05) * SR))
         bg = project.slice("background", c0, c1)
         fade = int(0.008 * SR)
         env = np.ones(out.shape[1], np.float32)
@@ -176,42 +220,26 @@ class Editor:
         out = out * env[None, :] + bg[:, : out.shape[1]] * (1 - env)[None, :]
 
         word = np.zeros(0, np.float32)
-        if spk is None:
-            info["why"] = "speaker unknown: background only"
-        else:
-            ref, text, pieces = project.reference(spk, s["ref_seconds"] if s["ref_on"] else 6.0, s["ref_pieces"] if s["ref_on"] else None)
-            if ref is None or not text:
-                info["why"] = "no voice sample for this speaker"
-            else:
-                key = (str(project.dir), spk, tuple(map(tuple, pieces)))
-                if key not in self.prompts:
-                    self.prompts[key] = self._cloner().prompt(ref, 24000, text)
-                info["reference"] = {"pieces": pieces, "seconds": round(sum(b - a for a, b in pieces), 2), "text": text}
-                target = max(word_len, 0.2)
-                old = V.NUM_STEP
-                steps = int(s["steps"]) if s["quality_on"] else 12
-                V.NUM_STEP = steps
-                try:
-                    word, sr = self._cloner().say(say, self.prompts[key], duration=target)
-                finally:
-                    V.NUM_STEP = old
-                word = _resample(word, sr, SR)
-                orig_voice = project.slice("vocals", start, end).mean(axis=0)
-                if s["pitch_on"] and abs(s["pitch"]) > 0.01:
-                    import librosa
+        if raw is not None:
+            import librosa
 
-                    word = librosa.effects.pitch_shift(word, sr=SR, n_steps=float(s["pitch"])).astype(np.float32)
-                if s["tone_on"]:
-                    word = _tone_match(word, orig_voice, SR, float(s["tone"]))
-                if s["loud_on"]:
-                    rms = float(np.sqrt(np.mean(orig_voice ** 2))) or 0.05
-                    word *= rms / (float(np.sqrt(np.mean(word ** 2))) + 1e-9) * 10 ** (float(s["loud_db"]) / 20)
-                f = min(len(word) // 4, int(0.01 * SR))
-                if f:
-                    word[:f] *= np.linspace(0, 1, f)
-                    word[-f:] *= np.linspace(1, 0, f)
-                a = int((gs - c0) * SR)
-                b = min(out.shape[1], a + len(word))
-                out[:, a:b] += word[None, : b - a]
-                info.update(seconds=round(len(word) / SR, 2), target=round(target, 2), steps=steps)
+            word = raw.copy()
+            if abs(speed - 1) > 0.01:  # faster/slower, same pitch
+                word = librosa.effects.time_stretch(word, rate=speed).astype(np.float32)
+            orig_voice = project.slice("vocals", start, end).mean(axis=0)
+            if s["pitch_on"] and abs(s["pitch"]) > 0.01:
+                word = librosa.effects.pitch_shift(word, sr=SR, n_steps=float(s["pitch"])).astype(np.float32)
+            if s["tone_on"]:
+                word = _tone_match(word, orig_voice, SR, float(s["tone"]))
+            if s["loud_on"]:
+                rms = float(np.sqrt(np.mean(orig_voice ** 2))) or 0.05
+                word *= rms / (float(np.sqrt(np.mean(word ** 2))) + 1e-9) * 10 ** (float(s["loud_db"]) / 20)
+            f = min(len(word) // 4, int(0.01 * SR))
+            if f:
+                word[:f] *= np.linspace(0, 1, f)
+                word[-f:] *= np.linspace(1, 0, f)
+            a = int((gs - c0) * SR)
+            b = min(out.shape[1], a + len(word))
+            out[:, a:b] += word[None, : b - a]
+            info["seconds"] = round(len(word) / SR, 3)
         return {"context": np.clip(out, -1, 1), "original": original, "word": word, "info": info, "start": c0}

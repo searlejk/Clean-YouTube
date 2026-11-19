@@ -95,6 +95,7 @@
 const $ = (s, el = document) => el.querySelector(s);
 const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 let P = null, pid = null, cur = null, last = null, settings = {}, autoPlay = true, busy = false, pending = false;
+const measured = {}; // "speaker|word" -> its length at natural pace once made (seconds)
 const player = $('#player');
 
 // Same rules as companion/voice_clone.py estimate_seconds and editor_audio.py plan().
@@ -103,10 +104,15 @@ function naturalSeconds(text) {
   const syll = words.reduce((n, w) => n + Math.max(1, (w.match(/[aeiouy]+/g) || []).length), 0);
   return 0.12 + 0.2 * syll;
 }
+function naturalOf(sw, s) {
+  const k = sw.speaker + '|' + (s.say || sw.say).toLowerCase().trim();
+  return k in measured ? { len: measured[k], real: true } : { len: naturalSeconds(s.say || sw.say), real: false };
+}
 function planGap(sw, s) {
   const swearLen = sw.end - sw.start;
-  const want = naturalSeconds(s.say || sw.say) / Math.max(0.3, s.speed || 1);
-  const allow = s.allowed ? Math.max(0.15, s.allowed) : Math.max(swearLen, want);
+  const nat = naturalOf(sw, s);
+  const word = nat.len / Math.max(0.3, s.speed || 1); // the made word, played at this speed
+  const allow = s.allowed ? Math.max(0.15, s.allowed) : Math.max(swearLen, word);
   const extra = allow - swearLen;
   let g0, g1;
   if (extra <= 0) [g0, g1] = [sw.start, sw.start + allow];
@@ -114,7 +120,7 @@ function planGap(sw, s) {
   else if (s.take === 'both') [g0, g1] = [sw.start - extra / 2, sw.end + extra / 2];
   else [g0, g1] = [sw.start, sw.start + allow];
   g0 = Math.max(0, g0);
-  return { g0, g1, word: Math.min(want, g1 - g0), want, allow, squeezed: want > g1 - g0 + 0.02 };
+  return { g0, g1, word, natural: nat.len, measured: nat.real, allow, overrun: word > g1 - g0 + 0.02 };
 }
 
 async function api(path, body) {
@@ -165,9 +171,10 @@ function render() {
     <div id="fit" class="fit"></div>
 
     <div class="dial"><span>Substitute word</span><input type="text" id="say" value="${settings.say}"><span></span></div>
-    <div class="dial"><span>Speaking speed</span>
-      <div><input type="range" id="speed" min="0.5" max="1.8" step="0.05" value="${settings.speed}"><div class="ends"><span>slower</span><span>normal</span><span>faster</span></div></div>
+    <div class="dial"><span>Speed of the word</span>
+      <div><input type="range" id="speed" min="0.5" max="2.5" step="0.05" value="${settings.speed}"><div class="ends"><span>slower</span><span>as made</span><span>faster</span></div></div>
       <output id="speed-out"></output></div>
+    <div class="info" style="margin:-6px 0 6px 180px">The word is made once at its normal pace; this plays it faster or slower (same pitch), so it's never cut. <button id="fit-btn" style="padding:3px 8px">Fit to the time</button></div>
     <div class="dial"><span>Time for the substitute</span>
       <div><input type="range" id="allowed" min="0.15" max="2.5" step="0.05" value="${settings.allowed || planGap(sw, settings).allow}"><div class="ends"><span>less time</span><span>more time →</span></div></div>
       <output id="allowed-out"></output></div>
@@ -211,26 +218,28 @@ function updatePreview() {
   const sl = $('#allowed');
   if (!settings.allowed) sl.value = pl.allow;
   // Timeline window: 1.5 s either side of everything involved.
-  const t0 = Math.min(pl.g0, sw.start) - 1.5, t1 = Math.max(pl.g1, sw.roomEnd) + 1.5;
+  const wEnd = pl.g0 + pl.word;
+  const t0 = Math.min(pl.g0, sw.start) - 1.5, t1 = Math.max(pl.g1, wEnd, sw.roomEnd) + 1.5;
   const x = (t) => ((t - t0) / (t1 - t0)) * 100;
   const words = P.words.filter((w) => w.end > t0 && w.start < t1);
   const cutWords = [];
   const html = words.map((w) => {
     const isSwear = w.start >= sw.start - 0.02 && w.end <= sw.end + 0.02;
-    const cut = !isSwear && w.start < pl.g1 && w.end > pl.g0;
+    const cut = !isSwear && w.start < Math.max(pl.g1, wEnd) && w.end > pl.g0;
     if (cut) cutWords.push(w.text);
     return `<div class="w ${isSwear ? 'swear' : ''} ${cut ? 'cut' : ''}" style="left:${x(w.start)}%;width:${Math.max(0.5, x(w.end) - x(w.start))}%" title="${w.text}">${w.text}</div>`;
   }).join('');
   const ticks = [];
   for (let t = Math.ceil(t0 * 2) / 2; t < t1; t += 0.5) ticks.push(`<div class="tick" style="left:${x(t)}%">${t.toFixed(1)}</div>`);
-  $('#timeline').innerHTML = html + `<div class="gap" style="left:${x(pl.g0)}%;width:${x(pl.g1) - x(pl.g0)}%"><span>“${settings.say}” ${pl.allow.toFixed(2)} s</span></div><div class="say" style="left:${x(pl.g0)}%;width:${x(pl.g0 + pl.word) - x(pl.g0)}%"></div>` + ticks.join('');
+  $('#timeline').innerHTML = html + `<div class="gap" style="left:${x(pl.g0)}%;width:${x(pl.g1) - x(pl.g0)}%"><span>“${settings.say}” ${pl.allow.toFixed(2)} s</span></div><div class="say" style="left:${x(pl.g0)}%;width:${x(wEnd) - x(pl.g0)}%;${pl.overrun ? 'background:var(--warn)' : ''}"></div>` + ticks.join('');
   const fit = $('#fit');
-  if (pl.squeezed) {
+  const len = `${pl.word.toFixed(2)} s at ${(+settings.speed).toFixed(2)}× (${pl.natural.toFixed(2)} s as made${pl.measured ? '' : ', estimated until it\'s made'})`;
+  if (pl.overrun) {
     fit.className = 'fit bad';
-    fit.textContent = `“${settings.say}” needs ${pl.want.toFixed(2)} s at this speed but only gets ${pl.allow.toFixed(2)} s, so it will be said faster. Give it more time or speed it up.`;
+    fit.textContent = `“${settings.say}” is ${len}: ${(pl.word - (pl.g1 - pl.g0)).toFixed(2)} s longer than the ${pl.allow.toFixed(2)} s given. Speed it up (Fit to the time) or give it more time.` + (cutWords.length ? ` Covers: ${cutWords.join(' ')}` : '');
   } else {
     fit.className = 'fit ok';
-    fit.textContent = `“${settings.say}” fits: ${pl.want.toFixed(2)} s of speech in ${pl.allow.toFixed(2)} s.` + (cutWords.length ? ` Covers: ${cutWords.join(' ')}` : '');
+    fit.textContent = `“${settings.say}” fits: ${len} in ${pl.allow.toFixed(2)} s.` + (cutWords.length ? ` Covers: ${cutWords.join(' ')}` : '');
   }
 }
 
@@ -252,6 +261,13 @@ function bind() {
     updatePreview(); changed();
   };
   $('#auto-time').onclick = () => { settings.allowed = null; updatePreview(); changed(); };
+  $('#fit-btn').onclick = () => {
+    const pl = planGap(sw, settings);
+    if (!settings.allowed) { setStatus('Set the time for the substitute first, then Fit speeds the word to fill it.'); return; }
+    settings.speed = Math.min(2.5, Math.max(0.5, +(pl.natural / settings.allowed).toFixed(2)));
+    $('#speed').value = settings.speed;
+    updatePreview(); changed();
+  };
   $('#autoplay').onchange = (e) => (autoPlay = e.target.checked);
   $('#b-orig').onclick = playOriginal;
   $('#b-sub').onclick = () => playRendered('context');
@@ -274,7 +290,7 @@ function bind() {
 function infoText(r) {
   const i = r.info;
   if (i.why) return i.why;
-  return `Made “${i.say}” (${i.seconds} s of speech) in ${r.seconds} s · ${i.steps} steps · copied from ${i.reference.seconds} s of their speech${i.squeezed ? ' · said faster to fit' : ''}`;
+  return `“${i.say}”: ${i.natural.toFixed(2)} s as made → ${i.seconds.toFixed(2)} s at ${(+settings.speed).toFixed(2)}×` + (i.made ? ` · made in ${r.seconds} s (${i.steps} steps, copied from ${i.reference.seconds} s of their speech)` : ` · ready in ${r.seconds} s (kept word, not remade)`);
 }
 function setStatus(t, cls) { const el = $('#status'); el.textContent = t; el.className = 'status ' + (cls || ''); }
 function playUrl(u) { player.src = u; player.play(); }
@@ -293,7 +309,9 @@ async function regenerate() {
   try {
     const sw = P.swears[cur];
     last = await api('/api/render', { id: pid, index: cur, settings });
+    if (last.info.natural && last.info.seconds) measured[sw.speaker + '|' + (settings.say || sw.say).toLowerCase().trim()] = last.info.natural;
     if (P.swears[cur] === sw) {
+      updatePreview();
       $('#b-sub').disabled = false; $('#b-word').disabled = false;
       setStatus(infoText(last));
       if (!pending) playRendered('context');
