@@ -14,9 +14,12 @@ Settings (each group can be switched off in the editor):
   tone_on, tone       match the brightness/EQ of the original swear (0–1 strength)
   loud_on, loud_db    loudness: matched to the original swear, then ± dB
   quality_on, steps   OmniVoice decoding steps (more: slower, cleaner)
-  timing_on, room_use, length
-                      how much of the pause after the swear the word may use
-                      (0–1), and a length factor on its natural length
+  speed               speaking speed (1 = natural; 0.5 slower … 1.8 faster)
+  allowed, take       seconds the substitute gets (None: as long as it needs
+                      at that speed). Time beyond the swear is taken from the
+                      words around it: "after", "before" or "both"; whatever it
+                      overlaps is covered by the background. The word is never
+                      cut: if it can't fit at that speed it's said faster.
 """
 
 import json
@@ -33,8 +36,32 @@ DEFAULTS = {
     "tone_on": False, "tone": 0.7,
     "loud_on": True, "loud_db": 0.0,
     "quality_on": False, "steps": 32,
-    "timing_on": True, "room_use": 1.0, "length": 1.0,
+    "speed": 1.0, "allowed": None, "take": "after",
 }
+
+
+def plan(swear, say, speed=1.0, allowed=None, take="after"):
+    """Where the substitute goes: (gap start, gap end, word seconds, natural
+    seconds at this speed, squeezed?). Same rules as the editor page's
+    timeline (companion/editor/index.html planGap)."""
+    from voice_clone import estimate_seconds
+
+    start, end = swear["start"], swear["end"]
+    swear_len = end - start
+    want = estimate_seconds(say) / max(0.3, float(speed or 1))
+    allow = max(0.15, float(allowed)) if allowed else max(swear_len, want)
+    extra = allow - swear_len
+    if extra <= 0:
+        g0, g1 = start, start + allow
+    elif take == "before":
+        g0, g1 = end - allow, end
+    elif take == "both":
+        g0, g1 = start - extra / 2, end + extra / 2
+    else:
+        g0, g1 = start, start + allow
+    g0 = max(0.0, g0)
+    word = min(want, g1 - g0)
+    return g0, g1, word, want, want > (g1 - g0) + 0.02
 
 
 def _resample(x, a, b):
@@ -132,14 +159,14 @@ class Editor:
         start, end, room_end, spk = sw["start"], sw["end"], sw["roomEnd"], sw["speaker"]
         say = (s["say"] or sw["say"]).strip()
         info = {"say": say, "speaker": spk}
-        c0, c1 = max(0.0, start - context), room_end + context
+        gs, ge, word_len, want, squeezed = plan(sw, say, s["speed"], s["allowed"], s["take"])
+        info.update(gap=[round(gs, 3), round(ge, 3)], squeezed=squeezed, natural=round(want, 2))
+        c0, c1 = max(0.0, min(gs, start) - context), max(ge, room_end) + context
         original = project.slice("mix", c0, c1)
         out = original.copy()
-        # The swear (plus the pause the word may use) is replaced by the background.
-        use = s["room_use"] if s["timing_on"] else 1.0
-        avail = max(end - start, (room_end - start) * use + (end - start) * (1 - use))
-        g0, g1 = int((start - c0 - 0.06) * SR), int((start - c0 + max(avail, end - start) + 0.1) * SR)
-        g0, g1 = max(0, g0), min(out.shape[1], g1)
+        # The swear and the time given to the substitute are replaced by the background.
+        g0 = max(0, int((min(gs, start) - c0 - 0.03) * SR))
+        g1 = min(out.shape[1], int((max(ge, end) - c0 + 0.05) * SR))
         bg = project.slice("background", c0, c1)
         fade = int(0.008 * SR)
         env = np.ones(out.shape[1], np.float32)
@@ -160,9 +187,7 @@ class Editor:
                 if key not in self.prompts:
                     self.prompts[key] = self._cloner().prompt(ref, 24000, text)
                 info["reference"] = {"pieces": pieces, "seconds": round(sum(b - a for a, b in pieces), 2), "text": text}
-                natural = V.estimate_seconds(say)
-                target = min(avail, natural * (s["length"] if s["timing_on"] else 1.0))
-                target = max(target, 0.25)
+                target = max(word_len, 0.2)
                 old = V.NUM_STEP
                 steps = int(s["steps"]) if s["quality_on"] else 12
                 V.NUM_STEP = steps
@@ -185,7 +210,7 @@ class Editor:
                 if f:
                     word[:f] *= np.linspace(0, 1, f)
                     word[-f:] *= np.linspace(1, 0, f)
-                a = int((start - c0) * SR)
+                a = int((gs - c0) * SR)
                 b = min(out.shape[1], a + len(word))
                 out[:, a:b] += word[None, : b - a]
                 info.update(seconds=round(len(word) / SR, 2), target=round(target, 2), steps=steps)

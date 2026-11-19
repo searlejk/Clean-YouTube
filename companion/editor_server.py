@@ -84,7 +84,8 @@ class Handler(BaseHTTPRequestHandler):
                 for w in p.words:
                     if w.get("speaker") is not None:
                         speakers[w["speaker"]] = speakers.get(w["speaker"], 0) + 1
-                return self.send(200, {"swears": p.swears, "speakers": speakers, "voices": p.voices, "presets": pr, "defaults": DEFAULTS})
+                words = [{"text": w["text"], "start": w["start"], "end": w["end"]} for w in p.words]
+                return self.send(200, {"swears": p.swears, "words": words, "speakers": speakers, "voices": p.voices, "presets": pr, "defaults": DEFAULTS})
             if u.path == "/api/audio":
                 p = project(q["id"])
                 return self.send(200, wav_bytes(p.slice(q.get("track", "mix"), float(q["start"]), float(q["end"]))), "audio/wav")
