@@ -50,6 +50,11 @@
   {
    "root": "motherfucker",
    "sense": "motherfucker.exclaim",
+   "pat": "^|,|. S ,|.|$"
+  },
+  {
+   "root": "motherfucker",
+   "sense": "motherfucker.exclaim",
    "pat": "^ (oh|ow|ah|aw|ugh|aah|argh) S ,|.|$"
   },
   {
@@ -67,6 +72,11 @@
    "root": "fuck",
    "sense": "fuck.holy",
    "pat": "holy S"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.the",
+   "pat": "/get|step|move|go|stay|shut|sit|back|calm/ the S"
   },
   {
    "root": "fuck",
@@ -113,6 +123,11 @@
   {
    "root": "fuck",
    "sense": "fuck.cheated",
+   "pat": "S=fucked|fucks by|me|us"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.cheated",
    "pat": "S=fucked|fucking|fucks * over"
   },
   {
@@ -153,6 +168,16 @@
   {
    "root": "fuck",
    "sense": "fuck.insult",
+   "pat": "a|an|such|total|complete|absolute|selfish|walking (/[a-z']+/) S=fuck|fucks|fucker|fuckers"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.insult",
+   "pat": "a|an|total|complete|absolute|selfish|walking|like S=fuck|fucks|fucker|fuckers"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.insult",
    "pat": "lucky S=fuck|fucks|fucker|fuckers",
    "subs": [
     "duck{}"
@@ -167,6 +192,16 @@
    "root": "fuck",
    "sense": "fuck.insult",
    "pat": "S=fucker|fuckers|fuckface|fuckwit|fuckhead|fuckwad"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.sex",
+   "pat": "/been|started|start|were|was|keep|kept|stop|went|caught|while|are|they|we|they're|we're|always|just|go|gonna|wanna|like/ S=fucking|fuckin in|on|for|all|at|again|each|like|$|.|,"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.sex",
+   "pat": "S=fucked|fucks|fucking|fuckin her|him"
   },
   {
    "root": "fuck",
@@ -271,7 +306,27 @@
   {
    "root": "shit",
    "sense": "shit.great",
+   "pat": "/(?!all|of|with|my|out|through|up|from|do|did|clean|grab|get|got|have|had|move|sell|bring|pack|takes|take)[a-z']+/ the S ,|.|$"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.great",
    "pat": "/is|was|are|you're|youre|it's|its|that's|thats|he's|she's|'s/ the S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.bad",
+   "pat": "/tastes|tasted|taste|looks|looked|look|smells|smelled|smell|feel|feels|felt|sound|sounds|sounded|play|plays|played|ran|runs/ like S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.bad",
+   "pat": "/is|was|so|literally|completely|totally|pure|utter|absolute|such|absolutely/ S=shit|shite"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.literal",
+   "pat": "/raw|fresh|human|dog|horse|bird|cow|cat|baby|actual|wet|chicken|pigeon|goose|deer|bear/ S=shit|shits"
   },
   {
    "root": "shit",
@@ -348,6 +403,11 @@
   },
   {
    "root": "damn",
+   "sense": "damn.intensifier",
+   "pat": "S=damn|goddamn|damned|darn /(?!i|i'm|you|he|she|we|they|it|that|this|those|these|the|a|an|man|bro|dude|son|look|if|what|how|why|there|girl|y'all|yo|ok|okay|so|and|but|oh|that's|it's|he's|she's|you're|we're|they're|my|your|right|now|again|bro|is|was|did|does|do|just|to|in|on|out|no|yes|yeah)[a-z']+/"
+  },
+  {
+   "root": "damn",
    "sense": "damn.impressed",
    "pat": "^ (oh|well|ooh|man|bro|dude|wow|yo) S=d+a+m+n+|da+mn+ ,|.|$ that|that's|thats|look|he|she|you|those|these|bro|dude|son|girl|man|okay|ok"
   },
@@ -400,6 +460,11 @@
    "root": "bitch",
    "sense": "bitch.complain",
    "pat": "S=bitching|bitchin|bitched"
+  },
+  {
+   "root": "bitch",
+   "sense": "bitch.hard",
+   "pat": "/it's|its|that's|thats|life's|which|it|this|that|which's/ (is|was|can|be|just) (just) (a|such) (/total|complete|real|full|absolute|relentless|massive|huge|fucking|freaking|right|whole|major|serious/) (on) (a) S"
   },
   {
    "root": "bitch",

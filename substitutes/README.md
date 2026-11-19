@@ -29,6 +29,11 @@ The generator asks for each sense in a random setting and style, then has
 the model check each sentence's meaning against the sense and three others,
 and keeps only the ones it agrees on (about half). ~4 s per kept sentence.
 
-Next: tune `map.json` on the train sentences, check it on the validation
-ones, then use it in the extension instead of the fixed `FUNNY_WORDS` /
+The set: 3,684 sentences, 60 for each of the 61 meanings (3,147 train / 527
+validation). The map picks the right meaning for 83 % of the train sentences
+and 81 % of the held-back validation ones. Part of what's left is wrong labels
+in the generated set; part is meanings the next words can't tell apart (a
+bare "f***!" can be joy or dismay).
+
+Next: use the map in the extension instead of the fixed `FUNNY_WORDS` /
 `FUNNY_PHRASES` lists.
