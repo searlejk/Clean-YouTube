@@ -22,6 +22,8 @@ from editor_audio import DEFAULTS, SR, Editor, Project
 
 HERE = Path(__file__).resolve().parent
 MEDIA = HERE.parent / "media"
+SUBS = HERE.parent / "substitutes"  # stand-in map and its review page (/subs)
+SUBS_FILES = {"sense.js": "text/javascript", "senses.json": "application/json", "map.json": "application/json", "review.json": "application/json"}
 PAGE = HERE / "editor" / "index.html"
 PORT = 47824
 
@@ -70,6 +72,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path == "/":
                 return self.send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+            if u.path == "/subs":
+                return self.send(200, (SUBS / "review.html").read_bytes(), "text/html; charset=utf-8")
+            if u.path.startswith("/subs/") and u.path[6:] in SUBS_FILES:
+                f = SUBS / u.path[6:]
+                return self.send(200, f.read_bytes() if f.exists() else b"{}", SUBS_FILES[u.path[6:]])
             if u.path == "/api/projects":
                 items = []
                 for d in sorted(MEDIA.glob("*/swears.json")):
@@ -113,6 +120,9 @@ class Handler(BaseHTTPRequestHandler):
                 while len(rendered) > 40:
                     rendered.pop(next(iter(rendered)))
                 return self.send(200, {"rid": rid, "info": r["info"], "start": r["start"], "seconds": round(time.perf_counter() - t, 2)})
+            if u.path == "/api/subs-review":
+                (SUBS / "review.json").write_text(json.dumps(body, indent=1))
+                return self.send(200, {"ok": True})
             if u.path == "/api/presets":
                 path = presets_path(body["id"])
                 pr = json.loads(path.read_text()) if path.exists() else {}

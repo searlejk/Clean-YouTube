@@ -1,0 +1,500 @@
+{
+ "_about": "Which sense a swear has, from the words next to it (see sense.js for the pattern rules). Rules are tried top to bottom per root; the first match wins, else the root's default. Measured against data/sentences.jsonl by evaluate.js.",
+ "roots": {
+  "motherfucker": {
+   "token": "motherf\\w*|mf|mfer",
+   "default": "motherfucker.insult"
+  },
+  "fuck": {
+   "token": "\\w*fuck\\w*|f+u+c+k+\\w*",
+   "default": "fuck.dismay"
+  },
+  "shitty": {
+   "token": "shitty|shittier|shittiest",
+   "default": "shitty.bad"
+  },
+  "shit": {
+   "token": "\\w*shit\\w*|\\w*shat",
+   "default": "shit.dismay"
+  },
+  "damn": {
+   "token": "\\w*damn\\w*|\\w*dammit|goddam\\w*|da+mn+",
+   "default": "damn.exclaim"
+  },
+  "hell": {
+   "token": "hell",
+   "default": "hell.place"
+  },
+  "bitch": {
+   "token": "\\w*bitch\\w*",
+   "default": "bitch.insult"
+  },
+  "ass": {
+   "token": "ass|asses|assed|asshole\\w*|dumbass\\w*|jackass\\w*|badass\\w*|kickass\\w*|smartass\\w*",
+   "default": "ass.body"
+  },
+  "dick": {
+   "token": "dick|dicks|dickhead\\w*|dicking|dicked|dickish",
+   "default": "dick.insult"
+  },
+  "piss": {
+   "token": "piss\\w*",
+   "default": "piss.literal"
+  },
+  "bastard": {
+   "token": "bastard\\w*",
+   "default": "bastard.insult"
+  }
+ },
+ "rules": [
+  {
+   "root": "motherfucker",
+   "sense": "motherfucker.exclaim",
+   "pat": "^ (oh|ow|ah|aw|ugh|aah|argh) S ,|.|$"
+  },
+  {
+   "root": "motherfucker",
+   "sense": "motherfucker.exclaim",
+   "pat": "^ (oh|ow|ah|aw|ugh) S"
+  },
+  {
+   "root": "fuck",
+   "sense": "motherfucker.insult",
+   "pat": "mother S=fucker|fuckers|fuckin|fucking|fuckas|fucka",
+   "prev": 1
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.holy",
+   "pat": "holy S"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.outof",
+   "pat": "the S out of|outta"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.care",
+   "pat": "/gives?|giving|gave|given|care/ (a|one|two) S"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.question",
+   "pat": "/what|who|where|why|how|when|which|whatever/ in the S",
+   "prev": 2
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.question",
+   "pat": "/what|who|where|why|how|when|which|whatever/ the S",
+   "prev": 1
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.the",
+   "pat": "the S"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.excited",
+   "pat": "S=fuck|fucking|fuckin|fuk /yeah+|yes+|yea|ya|yah|yep|yess/"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.it",
+   "pat": "S=fuck|fuk it ,|.|$|let's|lets|i'm|im|we|i"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.around",
+   "pat": "S=fuck\\w* around|about|with|w"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.cheated",
+   "pat": "S=fucked|fucking|fucks * over"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.cheated",
+   "pat": "/got|get|getting|gets/ S=fucked|fucked over"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.off",
+   "pat": "S=fuck|fuk|fuckin|fucking off|outta"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.you",
+   "pat": "S=fuck|fuk you|u|ya|yall|y'all|yourself|off,"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.dismiss",
+   "pat": "S=fuck|fuk|fuckin|fucking that|this|him|her|them|everyone|everybody|your|ur|those|these|em|'em"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.screwup",
+   "pat": "S=fucked|fucks|fucking|fuckin up"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.screwup",
+   "pat": "S=fucked|fucks|fucking|fuckin it|this|that|everything|things|my|his|her|your|the"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.doomed",
+   "pat": "S=fucked"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.insult",
+   "pat": "lucky S=fuck|fucks|fucker|fuckers",
+   "subs": [
+    "duck{}"
+   ]
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.insult",
+   "pat": "/stupid|dumb|lucky|little|fat|ugly|crazy|sick|poor|old|greedy|lazy|annoying|silly|sorry|dirty|rich|smug|pathetic|weird|you/ S=fuck|fucks|fucker|fuckers|fuckface|fuckwit|fuckhead ,|.|$"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.insult",
+   "pat": "S=fucker|fuckers|fuckface|fuckwit|fuckhead|fuckwad"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.dismay",
+   "pat": "S=fucking|fuckin hell"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.dismay",
+   "pat": "^ (oh|ah|aw|aww|ow|ugh|well|god|man|dude|bro) S=f+u+c+k+|fuk ,|.|$"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.dismay",
+   "pat": "oh|ah|aw S"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.intensifier",
+   "pat": "/this|that|the|my|your|ur|his|her|their|our|a|an|these|those|some|every|no|any|so|too|how|such|whole|entire|whose|its|it's/ S=fucking|fuckin|fuckn|effing|fucken /[a-z']+/"
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.intensifier",
+   "pat": "S=fucking|fuckin|fuckn|effing|fucken /[a-z']+/",
+   "subs": [
+    "really"
+   ]
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.sex",
+   "pat": "S=fucking|fuckin|fucks|fucked|fuck $|."
+  },
+  {
+   "root": "shit",
+   "sense": "shit.holy",
+   "pat": "holy S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.outof",
+   "pat": "the S out of|outta"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.nokidding",
+   "pat": "no S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.care",
+   "pat": "/gives?|giving|gave|given/ (a|one) S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.trash",
+   "pat": "/talk|talks|talking|talkin|talked|spew|spewing|spouting/ (some|that|so|this|mad) S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.amount",
+   "pat": "S=shitload\\w*|shitton\\w*|shittons|shitloads"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.amount",
+   "pat": "a S ton|tons|load|loads",
+   "next": 1
+  },
+  {
+   "root": "shit",
+   "sense": "shit.nonsense",
+   "pat": "S=bullshit\\w*ing|bullshittin me|us|him|her|them|you|ya|everyone|everybody",
+   "subs": [
+    "joking with"
+   ]
+  },
+  {
+   "root": "shit",
+   "sense": "shit.nonsense",
+   "pat": "S=bullshit\\w*ing|bullshittin",
+   "subs": [
+    "joking"
+   ]
+  },
+  {
+   "root": "shit",
+   "sense": "shit.nonsense",
+   "pat": "S=bullshit\\w*|horseshit\\w*|bs"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.nonsense",
+   "pat": "load|pile|full of S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.bad",
+   "pat": "piece|pieces of S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.great",
+   "pat": "/is|was|are|you're|youre|it's|its|that's|thats|he's|she's|'s/ the S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.literal",
+   "pat": "/dog|dogs|cat|cats|bird|birds|horse|cow|baby|stepped|step|stepping|smells|smell|like/ (in) S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.bad",
+   "pat": "/is|was|are|were|looks|sounds|tastes|feels|be|been|being|so|total|absolute|pure|utter/ S=shit ,|.|$"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.bad",
+   "pat": "S=shit /coffee|food|game|games|movie|car|phone|wifi|service|show|team|music|player|camera|quality|day|job|deal|weather|internet|beer|pizza/"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.stuff",
+   "pat": "/have|got|bring|brought|need|carry|pack|packed|buy|bought|sell|give|gives|do|doing|see|saw|hear|heard|know|knows|grab|get|move|moving|clean|stuff/ (my|your|ur|his|her|our|their|the|this|that|all|some|any|no|more) S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.stuff",
+   "pat": "S like|and"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.stuff",
+   "pat": "/my|your|ur|his|her|our|their|this|that|the|all|some|much|of|with|any|no|more|enough|other|weird|old|new|cool|basic|random|good|crazy|dumb|stupid|same|mad|that's|whatever/ S"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.literal",
+   "pat": "S=shit|shat|shitting|shits on|in|everywhere|himself|herself|myself|itself|the"
+  },
+  {
+   "root": "shit",
+   "sense": "shit.dismay",
+   "pat": "S"
+  },
+  {
+   "root": "damn",
+   "sense": "damn.care",
+   "pat": "/gives?|giving|gave|given|care/ (a|one) S"
+  },
+  {
+   "root": "damn",
+   "sense": "damn.exclaim",
+   "pat": "S it|dammit"
+  },
+  {
+   "root": "damn",
+   "sense": "damn.exclaim",
+   "pat": "S=\\w*dammit"
+  },
+  {
+   "root": "damn",
+   "sense": "damn.intensifier",
+   "pat": "S=goddamn\\w*|goddam\\w* /[a-z']+/",
+   "subs": [
+    "absolutely"
+   ]
+  },
+  {
+   "root": "damn",
+   "sense": "damn.intensifier",
+   "pat": "the|that|this|your|my|his|her|their|our|a|so|too|pretty|real|damn S"
+  },
+  {
+   "root": "damn",
+   "sense": "damn.intensifier",
+   "pat": "S /good|great|fine|right|nice|well|near|sure|hard|good|cool|hot|fast|tasty|delicious|beautiful|amazing|strong|smart|lucky|funny|sexy|clean|big|happy|proud|close|crazy|impressive|solid|perfect|tough|fun|cute|gorgeous/"
+  },
+  {
+   "root": "damn",
+   "sense": "damn.impressed",
+   "pat": "^ (oh|well|ooh|man|bro|dude|wow|yo) S=d+a+m+n+|da+mn+ ,|.|$ that|that's|thats|look|he|she|you|those|these|bro|dude|son|girl|man|okay|ok"
+  },
+  {
+   "root": "damn",
+   "sense": "damn.impressed",
+   "pat": "S /look|looking|you|she|he|bro|dude|son|girl|y'all/"
+  },
+  {
+   "root": "hell",
+   "sense": "hell.question",
+   "pat": "/what|who|where|why|how|when|which|whatever/ (in) the S"
+  },
+  {
+   "root": "hell",
+   "sense": "hell.outof",
+   "pat": "the S out of|outta"
+  },
+  {
+   "root": "hell",
+   "sense": "hell.excited",
+   "pat": "S /yeah+|yes+|yea|ya|yah|yep|no|naw|nah/"
+  },
+  {
+   "root": "hell",
+   "sense": "hell.dismiss",
+   "pat": "/go|goes|going|went/ to S"
+  },
+  {
+   "root": "hell",
+   "sense": "hell.dismiss",
+   "pat": "/get|got|getting/ the S"
+  },
+  {
+   "root": "hell",
+   "sense": "hell.intensifier",
+   "pat": "a S of|o|ofa"
+  },
+  {
+   "root": "hell",
+   "sense": "hell.intensifier",
+   "pat": "like|as|the S"
+  },
+  {
+   "root": "bitch",
+   "sense": "bitch.complain",
+   "pat": "S=bitching|bitchin|bitched|bitches|bitch about|at|and"
+  },
+  {
+   "root": "bitch",
+   "sense": "bitch.complain",
+   "pat": "S=bitching|bitchin|bitched"
+  },
+  {
+   "root": "bitch",
+   "sense": "bitch.hard",
+   "pat": "/this|that|it|life|level|which|game|job|traffic|boss|thing|stuff|parking|weather|test|exam|winter|monday|mondays|work/ (is|'s|was|can|be) (such|a|real|total|absolute) (a|real|total) S"
+  },
+  {
+   "root": "bitch",
+   "sense": "bitch.hard",
+   "pat": "a S to|of"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.pain",
+   "pat": "in the|my|your S"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.kick",
+   "pat": "/kick|kicks|kicking|kicked|kickin/ (some|their|his|her|your|my|our) S"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.badass",
+   "pat": "bad|kick S"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.badass",
+   "pat": "S=badass\\w*|kickass\\w*"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.dumb",
+   "pat": "S=dumbass\\w*"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.dumb",
+   "pat": "dumb S"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.person",
+   "pat": "S=asshole\\w*|jackass\\w*|smartass\\w*"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.person",
+   "pat": "/an|such|being|total|complete|real|big|huge|smart|jack|you|ya|what/ S ,|.|$"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.disbelief",
+   "pat": "/(?!on|off|of|out|kick|kicked|sit|sat|fell|fall|move|get|got|cover|whoop|whooped|bust|busted|kiss|save|saved|haul|in|up|from|to|down|over|wipe|shake|work|worked|working|freezing|laughing|in)[a-z']+/ (,|.) my S ,|.|$|?"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.half",
+   "pat": "half S"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.suffix",
+   "pat": "/big|half|crazy|old|weird|long|stupid|fat|sorry|lazy|cheap|fancy|scary|hard|bitch|broke|cheap|ugly|little|tiny|huge|sad|pussy|punk|dumb|sweet|nice|bad|stank|stinky|thick|goofy|wild|ghetto|fake|creepy|nasty|rich|tall|white|loud|messy|boring/ S=ass|assed"
+  },
+  {
+   "root": "ass",
+   "sense": "ass.body",
+   "pat": "S"
+  },
+  {
+   "root": "dick",
+   "sense": "dick.around",
+   "pat": "S=dick\\w* around|about|with"
+  },
+  {
+   "root": "piss",
+   "sense": "piss.angry",
+   "pat": "S=pissed|pisses|pissing|pissy|pissin|piss * off"
+  },
+  {
+   "root": "piss",
+   "sense": "piss.angry",
+   "pat": "S=pissed|pissy"
+  },
+  {
+   "root": "piss",
+   "sense": "piss.dismiss",
+   "pat": "S=piss off"
+  },
+  {
+   "root": "bastard",
+   "sense": "bastard.lucky",
+   "pat": "/lucky|poor|clever|sneaky|old|crazy|smart|cheeky|tough|stubborn|handsome|beautiful|brilliant|funny|tricky/ S"
+  }
+ ]
+}

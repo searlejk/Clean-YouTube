@@ -1,0 +1,785 @@
+{
+ "_about": "How each swear is used, and what to say instead of the swear word itself. subs: shortest first; the filter uses the longest that fits the time. {} takes the swear's ending (goof{} -> goofing / goofed / goofs). \"rotate\": take turns between the stand-ins. A rule in map.json can give its own stand-ins for a wording.",
+ "senses": [
+  {
+   "id": "fuck.you",
+   "swear": "fuck",
+   "meaning": "insulting someone directly, as in 'fuck you'",
+   "examples": [
+    "fuck you man",
+    "fuck you, I'm out",
+    "oh fuck you"
+   ],
+   "subs": [
+    "forget"
+   ]
+  },
+  {
+   "id": "fuck.dismiss",
+   "swear": "fuck",
+   "meaning": "contempt for something or someone talked about, as in 'fuck that' or 'fuck this game'",
+   "examples": [
+    "fuck that",
+    "fuck this game",
+    "fuck those guys"
+   ],
+   "subs": [
+    "forget"
+   ]
+  },
+  {
+   "id": "fuck.off",
+   "swear": "fuck",
+   "meaning": "telling someone to go away, as in 'fuck off'",
+   "examples": [
+    "fuck off",
+    "just fuck off already",
+    "tell him to fuck off"
+   ],
+   "subs": [
+    "buzz"
+   ]
+  },
+  {
+   "id": "fuck.intensifier",
+   "swear": "fucking",
+   "meaning": "adding emphasis to an adjective, adverb or noun",
+   "examples": [
+    "that was fucking amazing",
+    "I'm so fucking tired",
+    "this fucking car"
+   ],
+   "subs": [
+    "stinking"
+   ]
+  },
+  {
+   "id": "fuck.excited",
+   "swear": "fuck",
+   "meaning": "excitement or celebration",
+   "examples": [
+    "fuck yeah",
+    "fuck yes we did it"
+   ],
+   "subs": [
+    "oh"
+   ]
+  },
+  {
+   "id": "fuck.dismay",
+   "swear": "fuck",
+   "meaning": "an exclamation of shock, pain, frustration or a mistake",
+   "examples": [
+    "oh fuck",
+    "fuck, I dropped it",
+    "fuck!"
+   ],
+   "subs": [
+    "snap",
+    "shoot"
+   ],
+   "rotate": true
+  },
+  {
+   "id": "fuck.question",
+   "swear": "fuck",
+   "meaning": "inside a question for emphasis, like 'what the fuck' or 'who the fuck'",
+   "examples": [
+    "what the fuck is that",
+    "where the fuck are my keys",
+    "how the fuck did he do that"
+   ],
+   "subs": [
+    "on earth"
+   ]
+  },
+  {
+   "id": "fuck.the",
+   "swear": "fuck",
+   "meaning": "for emphasis in a command, as in 'get the fuck out' or 'shut the fuck up'",
+   "examples": [
+    "shut the fuck up",
+    "get the fuck out of here",
+    "sit the fuck down"
+   ],
+   "subs": [
+    "heck"
+   ]
+  },
+  {
+   "id": "fuck.screwup",
+   "swear": "fucked",
+   "meaning": "messed up or broke something, as in 'fucked up' or 'fucked it up'",
+   "examples": [
+    "I fucked it up",
+    "he fucked up the order",
+    "you're fucking it up"
+   ],
+   "subs": [
+    "goof{}",
+    "mess{}"
+   ]
+  },
+  {
+   "id": "fuck.doomed",
+   "swear": "fucked",
+   "meaning": "in big trouble or doomed, as in 'we're fucked'",
+   "examples": [
+    "we're so fucked",
+    "if he sees this I'm fucked",
+    "the game is fucked"
+   ],
+   "subs": [
+    "toast",
+    "finished"
+   ]
+  },
+  {
+   "id": "fuck.cheated",
+   "swear": "fucked",
+   "meaning": "treated unfairly or cheated",
+   "examples": [
+    "the refs fucked us",
+    "they fucked him over"
+   ],
+   "subs": [
+    "hose{}"
+   ]
+  },
+  {
+   "id": "fuck.around",
+   "swear": "fucking",
+   "meaning": "messing around, fooling around, or messing with someone",
+   "examples": [
+    "stop fucking around",
+    "don't fuck with me",
+    "just fucking around"
+   ],
+   "subs": [
+    "goof{}",
+    "mess{}"
+   ]
+  },
+  {
+   "id": "fuck.care",
+   "swear": "fuck",
+   "meaning": "in 'give a fuck' or 'don't give a fuck', meaning to care",
+   "examples": [
+    "I don't give a fuck",
+    "who gives a fuck"
+   ],
+   "subs": [
+    "fart"
+   ]
+  },
+  {
+   "id": "fuck.it",
+   "swear": "fuck",
+   "meaning": "giving up or deciding to just do it anyway, as in 'fuck it'",
+   "examples": [
+    "fuck it, let's go",
+    "ah fuck it"
+   ],
+   "subs": [
+    "forget"
+   ]
+  },
+  {
+   "id": "fuck.outof",
+   "swear": "fuck",
+   "meaning": "in 'the fuck out of', meaning very much or completely",
+   "examples": [
+    "scared the fuck out of me",
+    "beat the fuck out of him"
+   ],
+   "subs": [
+    "crap"
+   ]
+  },
+  {
+   "id": "fuck.holy",
+   "swear": "fuck",
+   "meaning": "in 'holy fuck', amazement",
+   "examples": [
+    "holy fuck that's huge"
+   ],
+   "subs": [
+    "moly",
+    "cow",
+    "guacamole"
+   ]
+  },
+  {
+   "id": "fuck.insult",
+   "swear": "fuck",
+   "meaning": "a noun for a person you dislike",
+   "examples": [
+    "you stupid fuck",
+    "that lucky fuck"
+   ],
+   "subs": [
+    "goob{}",
+    "big dummy"
+   ]
+  },
+  {
+   "id": "fuck.sex",
+   "swear": "fucking",
+   "meaning": "having sex",
+   "examples": [
+    "they were fucking",
+    "he fucked her"
+   ],
+   "subs": [
+    "canoodle{}"
+   ]
+  },
+  {
+   "id": "motherfucker.insult",
+   "swear": "motherfucker",
+   "meaning": "an insult for a person",
+   "examples": [
+    "that motherfucker stole it",
+    "you motherfucker"
+   ],
+   "subs": [
+    "meanie face man"
+   ]
+  },
+  {
+   "id": "motherfucker.exclaim",
+   "swear": "motherfucker",
+   "meaning": "an exclamation of pain, anger or surprise",
+   "examples": [
+    "ow motherfucker",
+    "motherfucker, not again"
+   ],
+   "subs": [
+    "meanie face man"
+   ]
+  },
+  {
+   "id": "shit.dismay",
+   "swear": "shit",
+   "meaning": "an exclamation of shock, frustration or a mistake",
+   "examples": [
+    "oh shit",
+    "shit, I forgot",
+    "shit!"
+   ],
+   "subs": [
+    "shoot"
+   ]
+  },
+  {
+   "id": "shit.holy",
+   "swear": "shit",
+   "meaning": "in 'holy shit', amazement",
+   "examples": [
+    "holy shit look at that"
+   ],
+   "subs": [
+    "moly",
+    "cow",
+    "guacamole"
+   ]
+  },
+  {
+   "id": "shit.stuff",
+   "swear": "shit",
+   "meaning": "things or stuff, neutrally",
+   "examples": [
+    "grab your shit",
+    "I have so much shit to do",
+    "all that shit"
+   ],
+   "subs": [
+    "stuff"
+   ]
+  },
+  {
+   "id": "shit.bad",
+   "swear": "shit",
+   "meaning": "something of bad quality",
+   "examples": [
+    "this game is shit",
+    "piece of shit",
+    "shit coffee"
+   ],
+   "subs": [
+    "trash"
+   ]
+  },
+  {
+   "id": "shit.nonsense",
+   "swear": "bullshit",
+   "meaning": "lies or nonsense",
+   "examples": [
+    "that's bullshit",
+    "stop bullshitting me",
+    "what a load of shit"
+   ],
+   "subs": [
+    "baloney",
+    "malarkey"
+   ]
+  },
+  {
+   "id": "shit.literal",
+   "swear": "shit",
+   "meaning": "poop, literally",
+   "examples": [
+    "the dog shit on the rug",
+    "stepped in shit"
+   ],
+   "subs": [
+    "poop{}"
+   ]
+  },
+  {
+   "id": "shit.outof",
+   "swear": "shit",
+   "meaning": "in 'the shit out of', meaning very much",
+   "examples": [
+    "scared the shit out of me",
+    "kicked the shit out of them"
+   ],
+   "subs": [
+    "crap"
+   ]
+  },
+  {
+   "id": "shit.nokidding",
+   "swear": "shit",
+   "meaning": "in 'no shit', meaning obviously or really",
+   "examples": [
+    "no shit, Sherlock",
+    "no shit? that's crazy"
+   ],
+   "subs": [
+    "duh",
+    "kidding"
+   ]
+  },
+  {
+   "id": "shit.amount",
+   "swear": "shit",
+   "meaning": "a large amount, as in 'a shit ton' or 'shitload'",
+   "examples": [
+    "a shit ton of money",
+    "a shitload of work"
+   ],
+   "subs": [
+    "boatload",
+    "truckload"
+   ]
+  },
+  {
+   "id": "shit.great",
+   "swear": "shit",
+   "meaning": "something excellent, as in 'that's the shit'",
+   "examples": [
+    "this song is the shit",
+    "you're the shit"
+   ],
+   "subs": [
+    "stuff"
+   ]
+  },
+  {
+   "id": "shit.care",
+   "swear": "shit",
+   "meaning": "in 'give a shit', meaning to care",
+   "examples": [
+    "I don't give a shit",
+    "nobody gives a shit"
+   ],
+   "subs": [
+    "crap"
+   ]
+  },
+  {
+   "id": "shit.trash",
+   "swear": "shit",
+   "meaning": "insults or boasting, as in 'talking shit'",
+   "examples": [
+    "stop talking shit",
+    "he was talking shit about you"
+   ],
+   "subs": [
+    "smack",
+    "trash"
+   ]
+  },
+  {
+   "id": "shitty.bad",
+   "swear": "shitty",
+   "meaning": "bad or unpleasant",
+   "examples": [
+    "a shitty day",
+    "that was shitty of him"
+   ],
+   "subs": [
+    "rotten",
+    "trashy"
+   ]
+  },
+  {
+   "id": "damn.exclaim",
+   "swear": "damn",
+   "meaning": "an exclamation of frustration or disappointment",
+   "examples": [
+    "damn it",
+    "damn, I missed",
+    "god damn it"
+   ],
+   "subs": [
+    "dang"
+   ]
+  },
+  {
+   "id": "damn.impressed",
+   "swear": "damn",
+   "meaning": "an exclamation of being impressed",
+   "examples": [
+    "damn, that's nice",
+    "daaamn look at him"
+   ],
+   "subs": [
+    "whoa"
+   ]
+  },
+  {
+   "id": "damn.intensifier",
+   "swear": "damn",
+   "meaning": "adding emphasis to an adjective or noun",
+   "examples": [
+    "damn good food",
+    "the damn printer",
+    "goddamn right"
+   ],
+   "subs": [
+    "darn"
+   ]
+  },
+  {
+   "id": "damn.care",
+   "swear": "damn",
+   "meaning": "in 'give a damn', meaning to care",
+   "examples": [
+    "I don't give a damn"
+   ],
+   "subs": [
+    "crap"
+   ]
+  },
+  {
+   "id": "hell.question",
+   "swear": "hell",
+   "meaning": "inside a question for emphasis, like 'what the hell'",
+   "examples": [
+    "what the hell",
+    "who the hell are you"
+   ],
+   "subs": [
+    "heck"
+   ]
+  },
+  {
+   "id": "hell.excited",
+   "swear": "hell",
+   "meaning": "excitement or agreement, as in 'hell yeah'",
+   "examples": [
+    "hell yeah",
+    "hell yes I'm in"
+   ],
+   "subs": [
+    "heck"
+   ]
+  },
+  {
+   "id": "hell.dismiss",
+   "swear": "hell",
+   "meaning": "telling someone to go away, as in 'go to hell'",
+   "examples": [
+    "go to hell",
+    "get the hell out"
+   ],
+   "subs": [
+    "heck"
+   ]
+  },
+  {
+   "id": "hell.intensifier",
+   "swear": "hell",
+   "meaning": "emphasis, as in 'a hell of a' or 'like hell'",
+   "examples": [
+    "a hell of a game",
+    "it hurts like hell",
+    "one hell of a ride"
+   ],
+   "subs": [
+    "heck"
+   ]
+  },
+  {
+   "id": "hell.outof",
+   "swear": "hell",
+   "meaning": "in 'the hell out of', meaning very much",
+   "examples": [
+    "scared the hell out of me",
+    "beat the hell out of him"
+   ],
+   "subs": [
+    "heck",
+    "daylights",
+    "living daylights"
+   ]
+  },
+  {
+   "id": "hell.place",
+   "swear": "hell",
+   "meaning": "a terrible place or experience",
+   "examples": [
+    "this traffic is hell",
+    "a week from hell"
+   ],
+   "subs": [
+    "heck"
+   ]
+  },
+  {
+   "id": "bitch.insult",
+   "swear": "bitch",
+   "meaning": "an insult for a person",
+   "examples": [
+    "she's such a bitch",
+    "you little bitch",
+    "son of a bitch"
+   ],
+   "subs": [
+    "biscuit{}",
+    "meanie"
+   ]
+  },
+  {
+   "id": "bitch.complain",
+   "swear": "bitching",
+   "meaning": "complaining",
+   "examples": [
+    "stop bitching about it",
+    "he bitches all day"
+   ],
+   "subs": [
+    "whine{}"
+   ]
+  },
+  {
+   "id": "bitch.hard",
+   "swear": "bitch",
+   "meaning": "something difficult or annoying",
+   "examples": [
+    "this level is a bitch",
+    "life's a bitch"
+   ],
+   "subs": [
+    "pain"
+   ]
+  },
+  {
+   "id": "ass.body",
+   "swear": "ass",
+   "meaning": "the buttocks, literally",
+   "examples": [
+    "fell on my ass",
+    "sit your ass down"
+   ],
+   "subs": [
+    "butt"
+   ]
+  },
+  {
+   "id": "ass.person",
+   "swear": "asshole",
+   "meaning": "an insult for a rude or mean person",
+   "examples": [
+    "what an asshole",
+    "don't be an ass",
+    "that guy's a jackass"
+   ],
+   "subs": [
+    "jerk{}"
+   ]
+  },
+  {
+   "id": "ass.dumb",
+   "swear": "dumbass",
+   "meaning": "an insult for a stupid person",
+   "examples": [
+    "you dumbass",
+    "dumbass move"
+   ],
+   "subs": [
+    "doofus"
+   ]
+  },
+  {
+   "id": "ass.kick",
+   "swear": "ass",
+   "meaning": "in 'kick ass', meaning to win or be great",
+   "examples": [
+    "that kicks ass",
+    "we kicked ass today",
+    "gonna kick some ass"
+   ],
+   "subs": [
+    "butt"
+   ]
+  },
+  {
+   "id": "ass.badass",
+   "swear": "badass",
+   "meaning": "tough, impressive or cool, as in 'badass' or 'kickass'",
+   "examples": [
+    "she's a badass",
+    "that was badass",
+    "a kickass show"
+   ],
+   "subs": [
+    "boss"
+   ]
+  },
+  {
+   "id": "ass.disbelief",
+   "swear": "ass",
+   "meaning": "in 'my ass', meaning disbelief",
+   "examples": [
+    "tired my ass",
+    "expert my ass"
+   ],
+   "subs": [
+    "butt"
+   ]
+  },
+  {
+   "id": "ass.suffix",
+   "swear": "ass",
+   "meaning": "emphasis after an adjective, as in 'big-ass' or 'half-assed'",
+   "examples": [
+    "a big-ass truck",
+    "crazy-ass idea",
+    "that's a long-ass line"
+   ],
+   "subs": [
+    "butt"
+   ]
+  },
+  {
+   "id": "ass.half",
+   "swear": "half-assed",
+   "meaning": "done lazily, as in 'half-assed'",
+   "examples": [
+    "a half-assed job",
+    "he half-assed it"
+   ],
+   "subs": [
+    "baked"
+   ]
+  },
+  {
+   "id": "ass.pain",
+   "swear": "ass",
+   "meaning": "in 'pain in the ass', something annoying",
+   "examples": [
+    "what a pain in the ass",
+    "he's a pain in the ass"
+   ],
+   "subs": [
+    "neck"
+   ]
+  },
+  {
+   "id": "dick.insult",
+   "swear": "dick",
+   "meaning": "an insult for a mean person",
+   "examples": [
+    "don't be a dick",
+    "what a dickhead"
+   ],
+   "subs": [
+    "jerk{}"
+   ]
+  },
+  {
+   "id": "dick.around",
+   "swear": "dick",
+   "meaning": "messing around, as in 'dick around'",
+   "examples": [
+    "stop dicking around"
+   ],
+   "subs": [
+    "goof{}"
+   ]
+  },
+  {
+   "id": "piss.angry",
+   "swear": "pissed",
+   "meaning": "angry, as in 'pissed off'",
+   "examples": [
+    "I'm so pissed",
+    "that pisses me off"
+   ],
+   "subs": [
+    "tick{}"
+   ]
+  },
+  {
+   "id": "piss.literal",
+   "swear": "piss",
+   "meaning": "urine or urinating, literally",
+   "examples": [
+    "I need to piss",
+    "the cat pissed on it"
+   ],
+   "subs": [
+    "pee{}"
+   ]
+  },
+  {
+   "id": "piss.dismiss",
+   "swear": "piss",
+   "meaning": "telling someone to go away, as in 'piss off'",
+   "examples": [
+    "piss off",
+    "go piss off somewhere"
+   ],
+   "subs": [
+    "buzz"
+   ]
+  },
+  {
+   "id": "bastard.insult",
+   "swear": "bastard",
+   "meaning": "an insult for a person",
+   "examples": [
+    "you bastard",
+    "that bastard lied"
+   ],
+   "subs": [
+    "rascal"
+   ]
+  },
+  {
+   "id": "bastard.lucky",
+   "swear": "bastard",
+   "meaning": "affectionate, as in 'lucky bastard'",
+   "examples": [
+    "you lucky bastard",
+    "poor bastard"
+   ],
+   "subs": [
+    "duck"
+   ]
+  }
+ ]
+}

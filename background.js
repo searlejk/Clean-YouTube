@@ -32,6 +32,11 @@ chrome.runtime.onInstalled.addListener(async () => {
   // v2: Tiny replaced Base as the default because it's much faster. Move
   // anyone still on the old default; leave other choices alone.
   if ((stored.settingsVersion || 1) < 2 && stored.model === 'base.en') patch.model = 'tiny.en';
+  // v3: "crap" isn't a swear any more. Take it out of a saved word list.
+  if ((stored.settingsVersion || 1) < 3 && Array.isArray(stored.words)) {
+    const words = stored.words.filter((w) => !['crap', 'crappy', 'crap*'].includes(String(w).toLowerCase()));
+    if (words.length !== stored.words.length) patch.words = words;
+  }
   patch.settingsVersion = PF.SETTINGS_VERSION;
   await chrome.storage.sync.set(patch);
 });

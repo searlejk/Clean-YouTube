@@ -1,0 +1,391 @@
+{
+ "fuck.you": {
+  "votes": {
+   "forget": "like"
+  },
+  "note": ""
+ },
+ "fuck.dismiss": {
+  "votes": {
+   "forget": "like"
+  },
+  "note": "for all of these same contextually just replace the f word with forget"
+ },
+ "fuck.off": {
+  "votes": {
+   "buzz": "like"
+  },
+  "note": "use buzz off for all of them"
+ },
+ "fuck.intensifier": {
+  "votes": {
+   "stinking": "like"
+  },
+  "note": "for that was really amazing use really instead. However the phrase this fing car doesn't seem to work with anything other than stinking"
+ },
+ "fuck.excited": {
+  "votes": {
+   "oh": "like"
+  },
+  "note": "just use oh for all of them"
+ },
+ "fuck.dismay": {
+  "votes": {
+   "snap": "like",
+   "shoot": "like"
+  },
+  "note": "use snap, shoot but swap between them"
+ },
+ "fuck.question": {
+  "votes": {
+   "on earth": "like"
+  },
+  "note": "use \"on earth\" so it should be what on earth and who on earth"
+ },
+ "fuck.the": {
+  "votes": {
+   "heck": "like"
+  },
+  "note": "use heck here"
+ },
+ "fuck.screwup": {
+  "votes": {
+   "goof{}": "like",
+   "mess{}": "like"
+  },
+  "note": ""
+ },
+ "fuck.doomed": {
+  "votes": {
+   "toast": "like",
+   "finished": "like"
+  },
+  "note": "say finished for longer ones"
+ },
+ "fuck.cheated": {
+  "votes": {
+   "hose{}": "like"
+  },
+  "note": ""
+ },
+ "fuck.around": {
+  "votes": {
+   "goof{}": "like",
+   "mess{}": "like"
+  },
+  "note": ""
+ },
+ "fuck.care": {
+  "votes": {
+   "fart": "like"
+  },
+  "note": "use fart"
+ },
+ "fuck.it": {
+  "votes": {
+   "forget": "like"
+  },
+  "note": "use forget for all of them"
+ },
+ "fuck.outof": {
+  "votes": {
+   "crap": "like"
+  },
+  "note": "use crap"
+ },
+ "fuck.holy": {
+  "votes": {
+   "moly": "like",
+   "cow": "like",
+   "guacamole": "like"
+  },
+  "note": ""
+ },
+ "fuck.insult": {
+  "votes": {
+   "goob{}": "like",
+   "big dummy": "like"
+  },
+  "note": "big dummy and goob and duck for lucky duck"
+ },
+ "fuck.sex": {
+  "votes": {
+   "canoodle{}": "like"
+  },
+  "note": ""
+ },
+ "motherfucker.insult": {
+  "votes": {
+   "meanie face man": "like"
+  },
+  "note": "meanie face man"
+ },
+ "motherfucker.exclaim": {
+  "votes": {
+   "meanie face man": "like"
+  },
+  "note": "use meanie face man"
+ },
+ "shit.dismay": {
+  "votes": {
+   "shoot": "like"
+  },
+  "note": "shoot"
+ },
+ "shit.holy": {
+  "votes": {
+   "moly": "like",
+   "cow": "like",
+   "guacamole": "like"
+  },
+  "note": ""
+ },
+ "shit.stuff": {
+  "votes": {
+   "stuff": "like"
+  },
+  "note": "always use stuff"
+ },
+ "shit.bad": {
+  "votes": {
+   "trash": "like"
+  },
+  "note": "trash for all of them"
+ },
+ "shit.nonsense": {
+  "votes": {
+   "baloney": "like",
+   "malarkey": "like"
+  },
+  "note": "replace stop bullshitting me with stop joking with me"
+ },
+ "shit.literal": {
+  "votes": {
+   "poop{}": "like"
+  },
+  "note": ""
+ },
+ "shit.outof": {
+  "votes": {
+   "crap": "like"
+  },
+  "note": "crap for all of them"
+ },
+ "shit.nokidding": {
+  "votes": {
+   "duh": "like",
+   "kidding": "like"
+  },
+  "note": ""
+ },
+ "shit.amount": {
+  "votes": {
+   "boatload": "like",
+   "truckload": "like"
+  },
+  "note": "replace the words \"shit ton\" with boatload or truckload"
+ },
+ "shit.great": {
+  "votes": {
+   "stuff": "like"
+  },
+  "note": "say stuff like thats the stuff"
+ },
+ "shit.care": {
+  "votes": {
+   "crap": "like"
+  },
+  "note": "say crap"
+ },
+ "shit.trash": {
+  "votes": {
+   "smack": "like",
+   "trash": "like"
+  },
+  "note": ""
+ },
+ "shitty.bad": {
+  "votes": {
+   "rotten": "like",
+   "trashy": "like"
+  },
+  "note": "trashy"
+ },
+ "damn.exclaim": {
+  "votes": {
+   "dang": "like"
+  },
+  "note": "dang"
+ },
+ "damn.impressed": {
+  "votes": {
+   "whoa": "like"
+  },
+  "note": ""
+ },
+ "damn.intensifier": {
+  "votes": {
+   "darn": "like"
+  },
+  "note": "use darn, for goddamn say absolutely"
+ },
+ "damn.care": {
+  "votes": {
+   "crap": "like"
+  },
+  "note": "crap"
+ },
+ "hell.question": {
+  "votes": {
+   "heck": "like"
+  },
+  "note": ""
+ },
+ "hell.excited": {
+  "votes": {
+   "heck": "like"
+  },
+  "note": ""
+ },
+ "hell.dismiss": {
+  "votes": {
+   "heck": "like"
+  },
+  "note": ""
+ },
+ "hell.intensifier": {
+  "votes": {
+   "heck": "like"
+  },
+  "note": ""
+ },
+ "hell.outof": {
+  "votes": {
+   "heck": "like",
+   "daylights": "like",
+   "living daylights": "like"
+  },
+  "note": ""
+ },
+ "hell.place": {
+  "votes": {
+   "heck": "like"
+  },
+  "note": ""
+ },
+ "bitch.insult": {
+  "votes": {
+   "biscuit{}": "like",
+   "meanie": "like"
+  },
+  "note": ""
+ },
+ "bitch.complain": {
+  "votes": {
+   "whine{}": "like"
+  },
+  "note": ""
+ },
+ "bitch.hard": {
+  "votes": {
+   "pain": "like"
+  },
+  "note": ""
+ },
+ "ass.body": {
+  "votes": {
+   "butt": "like"
+  },
+  "note": ""
+ },
+ "ass.person": {
+  "votes": {
+   "jerk{}": "like"
+  },
+  "note": ""
+ },
+ "ass.dumb": {
+  "votes": {
+   "doofus": "like"
+  },
+  "note": ""
+ },
+ "ass.kick": {
+  "votes": {
+   "butt": "like"
+  },
+  "note": ""
+ },
+ "ass.badass": {
+  "votes": {
+   "boss": "like"
+  },
+  "note": ""
+ },
+ "ass.disbelief": {
+  "votes": {
+   "butt": "like"
+  },
+  "note": "butt"
+ },
+ "ass.suffix": {
+  "votes": {
+   "butt": "like"
+  },
+  "note": "just say butt"
+ },
+ "ass.half": {
+  "votes": {
+   "baked": "like"
+  },
+  "note": ""
+ },
+ "ass.pain": {
+  "votes": {
+   "neck": "like"
+  },
+  "note": ""
+ },
+ "dick.insult": {
+  "votes": {
+   "jerk{}": "like"
+  },
+  "note": ""
+ },
+ "dick.around": {
+  "votes": {
+   "goof{}": "like"
+  },
+  "note": ""
+ },
+ "bastard.insult": {
+  "votes": {
+   "rascal": "like"
+  },
+  "note": ""
+ },
+ "bastard.lucky": {
+  "votes": {
+   "duck": "like"
+  },
+  "note": ""
+ },
+ "piss.angry": {
+  "votes": {
+   "tick{}": "like"
+  },
+  "note": ""
+ },
+ "piss.literal": {
+  "votes": {
+   "pee{}": "like"
+  },
+  "note": ""
+ },
+ "piss.dismiss": {
+  "votes": {
+   "buzz": "like"
+  },
+  "note": ""
+ }
+}

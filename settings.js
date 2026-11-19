@@ -25,8 +25,6 @@
     'piss',
     'pissed',
     'pissing',
-    'crap',
-    'crappy',
     'whore*',
     'slut*',
     'prick*',
@@ -48,7 +46,7 @@
     ['dumbass*', 'doofus'], ['asses', 'booties'], ['ass', 'booty'], ['bastard*', 'buttercup'],
     ['goddamn*', 'gosh darn'], ['goddam*', 'gosh darn'], ['damn*', 'dagnabbit'], ['hell', 'heck'],
     ['dickhead*', 'doofus'], ['dick*', 'doofus'], ['cocksucker*', 'rascal'], ['cock*', 'rooster'],
-    ['pissed', 'peeved'], ['pissing', 'tinkling'], ['piss', 'tinkle'], ['crappy', 'cruddy'], ['crap*', 'crud'],
+    ['pissed', 'peeved'], ['pissing', 'tinkling'], ['piss', 'tinkle'],
     ['whore*', 'hooligan'], ['slut*', 'hooligan'], ['prick*', 'pickle'], ['twat*', 'twit'],
     ['wanker*', 'wally'], ['cunt*', 'numpty'],
   ];
@@ -57,7 +55,6 @@
   const FUNNY_PHRASES = [
     [['holy', 'shit*'], [null, 'guacamole']],
     [['holy', 'fuck*'], [null, 'moly']],
-    [['holy', 'crap*'], [null, 'cannoli']],
     [['oh', 'shit*'], [null, 'snap']],
     [['oh', 'fuck*'], [null, 'fiddlesticks']],
     [['fuck*', 'off'], ['get', 'out']],
@@ -120,7 +117,7 @@
     'tiny.en': { label: 'Whisper tiny', timestampLag: { start: 0.25, end: -0.05 } },
   };
 
-  const SETTINGS_VERSION = 2;
+  const SETTINGS_VERSION = 3;
 
   root.PF = { DEFAULTS, DEFAULT_WORDS, DEFAULT_ALLOW, FUNNY_WORDS, FUNNY_PHRASES, MODELS, COMPANION_MODELS, SETTINGS_VERSION };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

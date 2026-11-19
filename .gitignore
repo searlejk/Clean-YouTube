@@ -19,3 +19,4 @@ tests/lookahead/fixtures/interview-*.json
 companion/vendor/
 voice-demos/
 media/
+substitutes/data/generate.log

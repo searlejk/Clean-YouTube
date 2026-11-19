@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stand-in Review</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e3de; --good:#1f8a4c; --goodbg:#e4f4ea; --bad:#c23b2e; --badbg:#fbe7e4; --accent:#3a5bd9; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#171716; --card:#22221f; --ink:#ecece8; --muted:#9a9a93; --line:#34342f; --goodbg:#183626; --badbg:#3d1d19; --good:#5fd08e; --bad:#ff8577; --accent:#8ea6ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 -apple-system, system-ui, sans-serif; }
+  header { position:sticky; top:0; z-index:2; background:var(--bg); border-bottom:1px solid var(--line); padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0 12px 0 0; }
+  .filters button, .vote button { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:8px; padding:5px 10px; font:inherit; cursor:pointer; }
+  .filters button.on { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  #progress { color:var(--muted); margin-left:auto; }
+  #saved { color:var(--muted); font-size:13px; min-width:60px; }
+  main { max-width:900px; margin:0 auto; padding:16px; }
+  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .meaning { font-weight:600; }
+  .examples { color:var(--muted); font-size:13px; margin:2px 0 10px; }
+  .row { display:flex; align-items:center; gap:12px; padding:7px 8px; border-radius:8px; }
+  .row.like { background:var(--goodbg); }
+  .row.dislike { background:var(--badbg); }
+  .row .sub { font-weight:600; min-width:120px; }
+  .row .sample { flex:1; color:var(--muted); font-size:14px; }
+  .row .sample b { color:var(--ink); }
+  .vote { display:flex; gap:6px; }
+  .vote button { padding:4px 10px; }
+  .row.like .vote .up { border-color:var(--good); color:var(--good); font-weight:700; }
+  .row.dislike .vote .down { border-color:var(--bad); color:var(--bad); font-weight:700; }
+  .note { width:100%; margin-top:8px; border:1px solid var(--line); border-radius:8px; padding:7px 10px; background:var(--bg); color:var(--ink); font:inherit; font-size:14px; }
+  .id { font-family:ui-monospace, monospace; font-size:12px; color:var(--muted); float:right; }
+  @media (max-width:600px) { .row { flex-wrap:wrap; } .row .sub { min-width:0; } .row .sample { flex-basis:100%; order:3; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Stand-in review</h1>
+  <div class="filters">
+    <button data-f="all" class="on">All</button>
+    <button data-f="todo">Not reviewed</button>
+    <button data-f="dislike">Has 👎</button>
+  </div>
+  <span id="saved"></span>
+  <span id="progress"></span>
+</header>
+<main id="list"></main>
+<script src="/subs/sense.js"></script>
+<script>
+(async () => {
+  const [senses, map, saved] = await Promise.all(['senses.json', 'map.json', 'review.json'].map((f) => fetch('/subs/' + f).then((r) => r.json())));
+  const S = PFSense.create(map, senses);
+  const review = saved && typeof saved === 'object' ? saved : {};
+  let filter = 'all';
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const rootName = (s) => s.id.split('.')[0];
+
+  // An example of the sense with this stand-in in place of the swear.
+  function sample(sense, sub) {
+    for (const ex of sense.examples) {
+      const words = ex.split(/\s+/);
+      const i = words.findIndex((w) => S.rootOf(S.tokenize(w)[0] || ''));
+      if (i < 0) continue;
+      const tok = S.tokenize(words[i])[0];
+      const prev = i > 0 ? S.tokenize(words[i - 1]).pop() : null;
+      const said = S.say(sub, tok, prev);
+      let before = words.slice(0, i);
+      if (prev && said !== S.say(sub, tok, null)) before = before.slice(0, -1).concat(words[i - 1]); // "oh" kept, stand-in shortened
+      const tail = words[i].slice(words[i].toLowerCase().indexOf(tok) + tok.length);
+      return esc(before.join(' ')) + (before.length ? ' ' : '') + '<b>' + esc(said) + '</b>' + esc(tail) + ' ' + esc(words.slice(i + 1).join(' '));
+    }
+    return '';
+  }
+
+  const entry = (id) => (review[id] ||= { votes: {}, note: '' });
+  const hasDislike = (id) => Object.values((review[id] || {}).votes || {}).includes('dislike');
+  const reviewed = (s) => s.subs.every((t) => (review[s.id] || { votes: {} }).votes[t]);
+
+  let timer = null;
+  function save() {
+    document.getElementById('saved').textContent = 'saving…';
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const r = await fetch('/api/subs-review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(review) });
+      document.getElementById('saved').textContent = r.ok ? 'saved ✓' : 'not saved!';
+    }, 400);
+  }
+
+  function progress() {
+    const done = senses.senses.filter(reviewed).length;
+    const bad = senses.senses.filter((s) => hasDislike(s.id)).length;
+    document.getElementById('progress').textContent = `${done} / ${senses.senses.length} reviewed · ${bad} with 👎`;
+  }
+
+  function render() {
+    const list = document.getElementById('list');
+    list.innerHTML = '';
+    let lastRoot = null;
+    for (const s of senses.senses) {
+      if (filter === 'todo' && reviewed(s)) continue;
+      if (filter === 'dislike' && !hasDislike(s.id)) continue;
+      if (rootName(s) !== lastRoot) {
+        lastRoot = rootName(s);
+        const h = document.createElement('h2');
+        h.textContent = lastRoot;
+        list.appendChild(h);
+      }
+      const card = document.createElement('div');
+      card.className = 'card';
+      const e = review[s.id] || { votes: {}, note: '' };
+      card.innerHTML = `<span class="id">${esc(s.id)}</span><div class="meaning">${esc(s.meaning[0].toUpperCase() + s.meaning.slice(1))}</div>
+        <div class="examples">${s.examples.map(esc).join(' · ')}</div>
+        ${s.subs.map((t) => `<div class="row ${e.votes[t] || ''}" data-sub="${esc(t)}"><span class="sub">${esc(t.replace('{}', ''))}</span><span class="sample">${sample(s, t)}</span>
+          <span class="vote"><button class="up" title="Keep">👍</button><button class="down" title="Replace this one">👎</button></span></div>`).join('')}
+        <input class="note" placeholder="Your own idea or a note (optional)" value="${esc(e.note || '')}">`;
+      card.querySelectorAll('.row').forEach((row) => {
+        const t = row.dataset.sub;
+        const set = (v) => {
+          const en = entry(s.id);
+          en.votes[t] = en.votes[t] === v ? undefined : v;
+          if (!en.votes[t]) delete en.votes[t];
+          row.className = 'row ' + (en.votes[t] || '');
+          save();
+          progress();
+        };
+        row.querySelector('.up').onclick = () => set('like');
+        row.querySelector('.down').onclick = () => set('dislike');
+      });
+      card.querySelector('.note').oninput = (ev) => { entry(s.id).note = ev.target.value; save(); };
+      list.appendChild(card);
+    }
+    progress();
+  }
+
+  document.querySelectorAll('.filters button').forEach((b) => (b.onclick = () => {
+    filter = b.dataset.f;
+    document.querySelectorAll('.filters button').forEach((x) => x.classList.toggle('on', x === b));
+    render();
+  }));
+  render();
+})();
+</script>
+</body>
+</html>

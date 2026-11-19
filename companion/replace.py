@@ -28,7 +28,7 @@ REPLACEMENTS = [  # word-list pattern (lowercase, * wildcard) -> clean word
     ("son of a bitch", "son of a gun"), ("motherfuck*", "mother trucker"), ("*fuck*", "fudge"), ("bullshit*", "bull"),
     ("horseshit*", "nonsense"), ("shit*", "shoot"), ("goddamn*", "gosh darn"), ("goddam*", "gosh darn"), ("damn*", "dang"),
     ("bitch*", "witch"), ("asshole*", "jerk"), ("jackass*", "jerk"), ("dumbass*", "dummy"), ("ass", "butt"), ("asses", "butts"),
-    ("bastard*", "rascal"), ("dick*", "jerk"), ("cock*", "jerk"), ("piss*", "miffed"), ("crap*", "crud"), ("hell", "heck"),
+    ("bastard*", "rascal"), ("dick*", "jerk"), ("cock*", "jerk"), ("piss*", "miffed"), ("hell", "heck"),
     ("whore*", "jerk"), ("slut*", "jerk"), ("prick*", "jerk"), ("twat*", "jerk"), ("wanker*", "jerk"), ("cunt*", "jerk"),
 ]
 
