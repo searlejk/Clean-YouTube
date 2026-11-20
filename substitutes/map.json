@@ -91,6 +91,16 @@
   {
    "root": "fuck",
    "sense": "fuck.question",
+   "pat": "/what|who|where|why|how|when/ the S=fuck's|fucks|fuckin's|fucking's",
+   "prev": 1,
+   "subs": [
+    "is"
+   ],
+   "why": "\"what the fuck's going on\" -> \"what is going on\""
+  },
+  {
+   "root": "fuck",
+   "sense": "fuck.question",
    "pat": "/what|who|where|why|how|when|which|whatever/ in the S",
    "prev": 2
   },

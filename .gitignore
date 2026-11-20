@@ -10,6 +10,7 @@ Clean-Ears-Extension/
 *.f32
 tests/lookahead/fixtures/ten-minutes.*
 companion/.venv/
+companion/.venv-indextts/
 __pycache__/
 companion/models/
 companion/tests/music/

@@ -23,7 +23,7 @@ from editor_audio import DEFAULTS, SR, Editor, Project
 HERE = Path(__file__).resolve().parent
 MEDIA = HERE.parent / "media"
 SUBS = HERE.parent / "substitutes"  # stand-in map and its review page (/subs)
-SUBS_FILES = {"sense.js": "text/javascript", "senses.json": "application/json", "map.json": "application/json", "review.json": "application/json"}
+SUBS_FILES = {"sense.js": "text/javascript", "fit.js": "text/javascript", "senses.json": "application/json", "map.json": "application/json", "review.json": "application/json"}
 PAGE = HERE / "editor" / "index.html"
 PORT = 47824
 
@@ -80,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/projects":
                 items = []
                 for d in sorted(MEDIA.glob("*/swears.json")):
-                    meta = MEDIA / f"{d.parent.name}.txt"
+                    meta = MEDIA / f"{d.parent.name}.txt"  # "title|seconds"
                     title = meta.read_text().split("|")[0] if meta.exists() else d.parent.name
                     items.append({"id": d.parent.name, "title": title})
                 return self.send(200, items)
@@ -116,10 +116,11 @@ class Handler(BaseHTTPRequestHandler):
                 with render_lock:  # one OmniVoice run at a time
                     r = editor.render(p, int(body["index"]), body.get("settings") or {})
                 rid = uuid.uuid4().hex[:12]
-                rendered[rid] = {"context": r["context"], "original": r["original"], "word": r["word"] if len(r["word"]) else np.zeros(SR // 10, np.float32)}
+                rendered[rid] = {"context": r["context"], "original": r["original"], "word": r["word"] if len(r["word"]) else np.zeros(SR // 10, np.float32),
+                                 "sentence": r["sentence"] if r.get("sentence") is not None else np.zeros(SR // 10, np.float32)}
                 while len(rendered) > 40:
                     rendered.pop(next(iter(rendered)))
-                return self.send(200, {"rid": rid, "info": r["info"], "start": r["start"], "seconds": round(time.perf_counter() - t, 2)})
+                return self.send(200, {"rid": rid, "info": r["info"], "start": r["start"], "seconds": round(time.perf_counter() - t, 2), "hasSentence": r.get("sentence") is not None})
             if u.path == "/api/subs-review":
                 (SUBS / "review.json").write_text(json.dumps(body, indent=1))
                 return self.send(200, {"ok": True})

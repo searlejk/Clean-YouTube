@@ -9,6 +9,23 @@ arrow) and check the version number shown matches the one below.
 
 ---
 
+## Editor · IndexTTS2 emotion, drag to place (Rogan test clips)
+
+- [ ] **Two voice models.** Open http://127.0.0.1:47824, pick "Joe Rogan: I
+      SWEAR in front of my KIDS…" or the Joey Diaz rant, pick a swear, and
+      switch Voice model between OmniVoice and "OmniVoice + IndexTTS2
+      emotion". Compare: does the IndexTTS2 one sound more like the feeling
+      of the original line? Try the "Copy the emotion" dial (a little ↔
+      fully) and ▶ IndexTTS2 sentence to hear the whole restyled line.
+- [ ] **Drag to place.** Drag the green box on the timeline left/right: the
+      word is said where you drop it ("At the swear" puts it back).
+- [ ] **Speed and time** dials still work with both models.
+- [ ] **Auto-fit.** Open each swear: the word, its position and its time are
+      already set so it fits in the gap without covering other words (e.g.
+      3:48 "what the f***'s going on" → "what is going on"). Press
+      Regenerate: once the word is made it's re-fitted to its real length.
+      Note any where you'd still move it by hand, and what you did.
+
 ## Version 1.17.x · OmniVoice, funny stand-ins, auto-start, editor
 
 - [ ] **Auto-start.** With the companion stopped, play a YouTube video: within

@@ -17,6 +17,16 @@ Settings (each group can be switched off in the editor):
   speed               how fast the made word is played (1 = as the model said
                       it; >1 faster), pitch kept: the word is made once at its
                       natural pace and stretched, so it's never cut
+  engine              "omni": the word as OmniVoice makes it; "index": OmniVoice
+                      says the whole sentence (with the substitute), then
+                      IndexTTS2 says it again in that voice but with the
+                      emotion of the original sentence, and the substitute is
+                      cut out of that (forced alignment)
+  emo_alpha           how strongly IndexTTS2 copies the original's emotion (0–1)
+  place               where the substitute starts (seconds in the video; None:
+                      at the swear, or as `take` says). Set by dragging it.
+  span                [start, end] of the words replaced, when a rule swaps more
+                      than the swear ("the fuck's" -> "is"; substitutes/fit.js)
   allowed, take       seconds the substitute gets (None: as long as it needs
                       at that speed). Time beyond the swear is taken from the
                       words around it: "after", "before" or "both"; whatever it
@@ -38,11 +48,12 @@ DEFAULTS = {
     "tone_on": False, "tone": 0.7,
     "loud_on": True, "loud_db": 0.0,
     "quality_on": False, "steps": 32,
-    "speed": 1.0, "allowed": None, "take": "after",
+    "speed": 1.0, "allowed": None, "take": "after", "place": None,
+    "engine": "omni", "emo_alpha": 0.6, "span": None,
 }
 
 
-def plan(swear, natural, speed=1.0, allowed=None, take="after"):
+def plan(swear, natural, speed=1.0, allowed=None, take="after", place=None):
     """Where the substitute goes. `natural`: the word's length at its natural
     pace (seconds; measured once it's made, estimated before). Returns
     (gap start, gap end, word seconds at this speed, overruns?). Same rules
@@ -54,7 +65,9 @@ def plan(swear, natural, speed=1.0, allowed=None, take="after"):
     word = natural / max(0.3, float(speed or 1))
     allow = max(0.15, float(allowed)) if allowed else max(swear_len, word)
     extra = allow - swear_len
-    if extra <= 0:
+    if place is not None:
+        g0, g1 = float(place), float(place) + allow
+    elif extra <= 0:
         g0, g1 = start, start + allow
     elif take == "before":
         g0, g1 = end - allow, end
@@ -138,11 +151,73 @@ def _tone_match(word, target, sr, strength):
     return librosa.istft(S, length=len(word)).astype(np.float32)
 
 
+class IndexTTSWorker:
+    """companion/index_tts_worker.py running in .venv-indextts (started on
+    first use, ~30 s to load, then kept)."""
+
+    def __init__(self):
+        self.proc = None
+
+    def ready(self):
+        import subprocess
+
+        if self.proc and self.proc.poll() is None:
+            return
+        here = Path(__file__).resolve().parent
+        py = here / ".venv-indextts" / "bin" / "python"
+        if not py.exists():
+            raise RuntimeError("IndexTTS2 isn't installed (companion/.venv-indextts missing)")
+        log = open("/tmp/index_tts_worker.log", "a")
+        self.proc = subprocess.Popen([str(py), str(here / "index_tts_worker.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1)
+        hello = self._read()
+        if not hello.get("ready"):
+            raise RuntimeError("IndexTTS2 didn't start: " + str(hello))
+
+    def _read(self):
+        while True:
+            line = self.proc.stdout.readline()
+            if not line:
+                raise RuntimeError("IndexTTS2 stopped (see /tmp/index_tts_worker.log)")
+            if line.startswith("{"):
+                return json.loads(line)
+
+    def say(self, spk, emo, text, out, emo_alpha):
+        self.ready()
+        self.proc.stdin.write(json.dumps({"spk": str(spk), "emo": str(emo), "text": text, "out": str(out), "emo_alpha": emo_alpha}) + "\n")
+        self.proc.stdin.flush()
+        r = self._read()
+        if not r.get("ok"):
+            raise RuntimeError(r.get("error"))
+        return r["seconds"]
+
+
+def sentence_around(project, sw, max_side=2.0, max_pause=0.6):
+    """The words the speaker says around the swear, in one breath: indices
+    (first, swear first, swear last, last) into project.words."""
+    W = project.words
+    inside = [i for i, w in enumerate(W) if sw["start"] - 0.02 <= (w["start"] + w["end"]) / 2 <= sw["end"] + 0.02]
+    if not inside:
+        return None
+    a, b = inside[0], inside[-1]
+    spk = sw.get("speaker")
+    same = lambda w: spk is None or w.get("speaker") in (None, spk)
+    lo = a
+    while lo > 0 and same(W[lo - 1]) and W[lo]["start"] - W[lo - 1]["end"] < max_pause and W[a]["start"] - W[lo - 1]["start"] <= max_side:
+        lo -= 1
+    hi = b
+    while hi + 1 < len(W) and same(W[hi + 1]) and W[hi + 1]["start"] - W[hi]["end"] < max_pause and W[hi + 1]["end"] - W[b]["end"] <= max_side:
+        hi += 1
+    return lo, a, b, hi
+
+
 class Editor:
     def __init__(self):
         self.cloner = None
         self.prompts = {}  # (project dir, speaker, pieces) -> prompt
         self.words = {}  # (prompt key, text, steps) -> word at natural pace, 48 kHz
+        self.styled = {}  # (prompt key, sentence, steps, emo_alpha) -> (word, sentence audio, info)
+        self.index = IndexTTSWorker()
+        self.aligner = None
 
     def _cloner(self):
         if self.cloner is None:
@@ -169,13 +244,97 @@ class Editor:
             old = V.NUM_STEP
             V.NUM_STEP = steps
             try:
-                word, sr = self._cloner().say(say, self.prompts[key], duration=None)  # its own natural pace
+                # Its natural pace ≈ the syllable estimate. Left to choose its own
+                # length, OmniVoice pads short words with extra speech ("is" ->
+                # "it is", "really" -> words from the reference); a full stop
+                # helps it end cleanly.
+                text = say if say[-1:] in ".!?" else say + "."
+                word, sr = self._cloner().say(text, self.prompts[key], duration=V.estimate_seconds(say))
             finally:
                 V.NUM_STEP = old
             self.words[wkey] = _resample(word, sr, SR)
             made = True
         ref_info = {"pieces": pieces, "seconds": round(sum(b - a for a, b in pieces), 2), "text": text}
         return self.words[wkey], {"steps": steps, "made": made, "reference": ref_info}, key
+
+    def styled_word(self, project, spk, sw, s, say):
+        """The substitute restyled by IndexTTS2: OmniVoice says the whole
+        sentence with the substitute in it (that's the voice), IndexTTS2 says
+        the sentence again in that voice with the emotion of the original
+        sentence, and the substitute is cut out of it by forced alignment.
+        Returns (word 48 kHz, info, sentence 48 kHz) or (None, why, None)."""
+        import hashlib
+        import re
+        import voice_clone as V
+
+        span = sentence_around(project, sw)
+        if span is None:
+            return None, "couldn't find the sentence around the swear", None
+        lo, a, b, hi = span
+        W = project.words
+        before = " ".join(w["text"] for w in W[lo:a]).strip()
+        after = " ".join(w["text"] for w in W[b + 1:hi + 1]).strip()
+        text = " ".join(x for x in (before, say, after) if x)
+        text = re.sub(r"\s+", " ", text)
+        ref, rtext, pieces = project.reference(spk, s["ref_seconds"] if s["ref_on"] else 6.0, s["ref_pieces"] if s["ref_on"] else None)
+        if ref is None or not rtext:
+            return None, "no voice sample for this speaker", None
+        key = (str(project.dir), spk, tuple(map(tuple, pieces)))
+        if key not in self.prompts:
+            self.prompts[key] = self._cloner().prompt(ref, 24000, rtext)
+        steps = int(s["steps"]) if s["quality_on"] else 12
+        alpha = round(float(s["emo_alpha"]), 2)
+        skey = (key, text.lower(), steps, alpha)
+        if skey in self.styled:
+            word, sent, info = self.styled[skey]
+            return word, dict(info, made=False), sent
+        cache = project.dir / "cache"
+        cache.mkdir(exist_ok=True)
+        h = hashlib.sha1(repr(skey).encode()).hexdigest()[:12]
+        # 1. OmniVoice: the sentence in their voice (the voice IndexTTS2 copies).
+        old = V.NUM_STEP
+        V.NUM_STEP = steps
+        try:
+            omni, osr = self._cloner().say(text, self.prompts[key], duration=None)
+        finally:
+            V.NUM_STEP = old
+        spk_path = cache / f"omni-{h}.wav"
+        soundfile.write(spk_path, omni, osr)
+        # 2. The original sentence (separated voice) for its emotion.
+        t0, t1 = W[lo]["start"], W[hi]["end"]
+        emo_path = cache / f"emo-{hashlib.sha1(f'{t0:.3f}-{t1:.3f}'.encode()).hexdigest()[:12]}.wav"
+        if not emo_path.exists():
+            soundfile.write(emo_path, project.slice("vocals", t0, t1).mean(axis=0), SR)
+        # 3. IndexTTS2: same words, OmniVoice's voice, the original's emotion.
+        out_path = cache / f"index-{h}.wav"
+        took = self.index.say(spk_path, emo_path, text, out_path, alpha)
+        sent, isr = soundfile.read(out_path, dtype="float32", always_2d=True)
+        sent = sent.mean(axis=1)
+        # 4. Find the substitute in it.
+        if self.aligner is None:
+            from align import Aligner
+
+            self.aligner = Aligner()
+        toks = [t for t in text.split(" ") if t]
+        nb = len([t for t in before.split(" ") if t])
+        ns = len([t for t in say.split(" ") if t])
+        s16 = _resample(sent, isr, 16000)
+        al = self.aligner.align(s16, 0.0, [{"text": t, "start": 0, "end": 0} for t in toks])
+        part = al[nb:nb + ns]
+        sent48 = _resample(sent, isr, SR)
+        if not part or not all(w["aligned"] for w in part):
+            return None, "couldn't find the substitute in IndexTTS2's sentence", sent48
+        w0 = max(0.0, part[0]["start"] - 0.02)
+        w1 = part[-1]["end"] + 0.03
+        nxt = al[nb + ns]["start"] if nb + ns < len(al) and al[nb + ns]["aligned"] else None
+        if nxt is not None:
+            w1 = min(w1, max(part[-1]["end"], nxt - 0.01))
+        word = sent48[int(w0 * SR):int(w1 * SR)].copy()
+        ref_info = {"pieces": pieces, "seconds": round(sum(q - p for p, q in pieces), 2), "text": rtext}
+        info = {"steps": steps, "made": True, "reference": ref_info, "sentence": text, "index_seconds": took,
+                "cut": [round(w0, 3), round(w1, 3)], "emo_from": [round(t0, 3), round(t1, 3)]}
+        self.styled[skey] = (word, sent48, info)
+        return word, info, sent48
 
     def render(self, project, index, settings, context=2.0):
         """Returns dict with 'context' (mix with the substitute in place,
@@ -187,12 +346,22 @@ class Editor:
 
         s = {**DEFAULTS, **(settings or {})}
         sw = project.swears[index]
+        if s["span"]:  # the auto-fit replaces more than the swear's own words
+            a, b = float(s["span"][0]), float(s["span"][1])
+            sw = {**sw, "start": a, "end": b, "roomEnd": max(sw["roomEnd"], b)}
         start, end, room_end, spk = sw["start"], sw["end"], sw["roomEnd"], sw["speaker"]
         say = (s["say"] or sw["say"]).strip()
         info = {"say": say, "speaker": spk}
-        raw = None
+        raw, sentence = None, None
+        info["engine"] = s["engine"]
         if spk is None:
             info["why"] = "speaker unknown: background only"
+        elif s["engine"] == "index":
+            raw, extra, sentence = self.styled_word(project, spk, sw, s, say)
+            if raw is None:
+                info["why"] = extra
+            else:
+                info.update(extra)
         else:
             raw, extra, _ = self.natural_word(project, spk, s, say)
             if raw is None:
@@ -201,7 +370,7 @@ class Editor:
                 info.update(extra)
         natural = len(raw) / SR if raw is not None else V.estimate_seconds(say)
         speed = float(s["speed"] or 1)
-        gs, ge, word_len, overrun = plan(sw, natural, speed, s["allowed"], s["take"])
+        gs, ge, word_len, overrun = plan(sw, natural, speed, s["allowed"], s["take"], s["place"])
         we = gs + word_len
         info.update(gap=[round(gs, 3), round(ge, 3)], natural=round(natural, 3), word=round(word_len, 3), overrun=overrun)
         cover0, cover1 = min(gs, start), max(ge, end, we if raw is not None else ge)
@@ -242,4 +411,4 @@ class Editor:
             b = min(out.shape[1], a + len(word))
             out[:, a:b] += word[None, : b - a]
             info["seconds"] = round(len(word) / SR, 3)
-        return {"context": np.clip(out, -1, 1), "original": original, "word": word, "info": info, "start": c0}
+        return {"context": np.clip(out, -1, 1), "original": original, "word": word, "sentence": sentence, "info": info, "start": c0}

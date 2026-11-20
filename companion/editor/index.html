@@ -42,6 +42,8 @@
   .tl .w.swear { background: var(--accent); color: #fff; font-weight: 600; }
   .tl .w.cut { outline: 2px solid var(--accent); outline-offset: -2px; }
   .tl .gap { position: absolute; top: 6px; bottom: 6px; background: var(--sub); border: 2px solid var(--ok); border-radius: 6px; }
+  .tl .gap { cursor: grab; touch-action: none; }
+  .tl .gap.dragging { cursor: grabbing; }
   .tl .gap span { position: absolute; top: 2px; left: 6px; font-size: 12px; font-weight: 600; color: var(--ok); white-space: nowrap; }
   .tl .say { position: absolute; bottom: 8px; height: 6px; background: var(--ok); border-radius: 3px; }
   .tl .tick { position: absolute; bottom: 0; font-size: 10px; color: var(--muted); transform: translateX(-50%); }
@@ -57,8 +59,11 @@
   .dial output { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
   .dial input[type=range] { width: 100%; }
   input[type=text] { font: inherit; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--field); color: var(--fg); width: 100%; }
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  .seg button { border: 0; border-radius: 0; padding: 6px 12px; }
+  .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 6px 12px; white-space: nowrap; }
+  #engine { flex-wrap: wrap; justify-self: start; max-width: 100%; }
+  .dial.wide { grid-template-columns: 170px 1fr; }
+  @media (max-width: 900px) { .dial { grid-template-columns: 120px 1fr 70px; } .dial.wide { grid-template-columns: 120px 1fr; } }
   .seg button.on { background: var(--accent); color: #fff; }
   details { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 10px; }
   summary { cursor: pointer; font-weight: 600; }
@@ -91,11 +96,18 @@
   <div id="panel"><p class="info">Pick a swear on the left.</p></div>
 </main>
 <audio id="player"></audio>
+<script src="/subs/sense.js"></script>
+<script src="/subs/fit.js"></script>
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 let P = null, pid = null, cur = null, last = null, settings = {}, autoPlay = true, busy = false, pending = false;
-const measured = {}; // "speaker|word" -> its length at natural pace once made (seconds)
+let SENSE = null, autoFitOn = true, fitNote = '';
+let fits = []; // auto-fit for each swear (with estimated lengths) for the list
+let refitWord = false; // the auto-fit keeps the typed word ("Fit this word")
+const measured = {}; // "engine|speaker|word" -> its length at natural pace once made (seconds)
+let win = { t0: 0, t1: 1 };
+let drag = null; // while dragging the substitute: {x0, place0, t0, t1, width}
 const player = $('#player');
 
 // Same rules as companion/voice_clone.py estimate_seconds and editor_audio.py plan().
@@ -105,17 +117,40 @@ function naturalSeconds(text) {
   return 0.12 + 0.2 * syll;
 }
 function naturalOf(sw, s) {
-  const k = sw.speaker + '|' + (s.say || sw.say).toLowerCase().trim();
+  const k = s.engine + '|' + sw.speaker + '|' + (s.say || sw.say).toLowerCase().trim();
   return k in measured ? { len: measured[k], real: true } : { len: naturalSeconds(s.say || sw.say), real: false };
 }
+// The swear as the substitute replaces it: the auto-fit can swap more words
+// ("the fuck's" -> "is"), given as settings.span.
+function spanned(sw, s) { return s.span ? { ...sw, start: s.span[0], end: s.span[1], roomEnd: Math.max(sw.roomEnd, s.span[1]) } : sw; }
+function lengthOf(sw, engine, text) {
+  const k = engine + '|' + sw.speaker + '|' + text.toLowerCase().trim();
+  return k in measured ? measured[k] : naturalSeconds(text);
+}
+// Deterministic auto-fit (substitutes/fit.js): word by meaning, longest
+// that fits between the neighbouring words, placed there, time = its length.
+function autoFit(i, s, onlyWord) {
+  const sw = P.swears[i];
+  if (!SENSE) return null;
+  return PFFit.fit(SENSE, P.words, sw, (t) => lengthOf(sw, s.engine, t), onlyWord ? { options: [onlyWord] } : null);
+}
+function applyFit(f) {
+  if (!f) return false;
+  const before = JSON.stringify([settings.say, settings.place, settings.allowed, settings.speed, settings.span]);
+  Object.assign(settings, { say: f.say, place: f.place, allowed: f.allowed, speed: f.speed, span: f.span, auto: true });
+  fitNote = 'Auto-fit: ' + f.note + (f.options.length > 1 ? ` (options: ${f.options.join(', ')})` : '');
+  return before !== JSON.stringify([settings.say, settings.place, settings.allowed, settings.speed, settings.span]);
+}
 function planGap(sw, s) {
+  sw = spanned(sw, s);
   const swearLen = sw.end - sw.start;
   const nat = naturalOf(sw, s);
   const word = nat.len / Math.max(0.3, s.speed || 1); // the made word, played at this speed
   const allow = s.allowed ? Math.max(0.15, s.allowed) : Math.max(swearLen, word);
   const extra = allow - swearLen;
   let g0, g1;
-  if (extra <= 0) [g0, g1] = [sw.start, sw.start + allow];
+  if (s.place != null) [g0, g1] = [s.place, s.place + allow];
+  else if (extra <= 0) [g0, g1] = [sw.start, sw.start + allow];
   else if (s.take === 'before') [g0, g1] = [sw.end - allow, sw.end];
   else if (s.take === 'both') [g0, g1] = [sw.start - extra / 2, sw.end + extra / 2];
   else [g0, g1] = [sw.start, sw.start + allow];
@@ -130,7 +165,14 @@ async function api(path, body) {
   return j;
 }
 
+async function loadSense() {
+  try {
+    const [map, senses] = await Promise.all(['map.json', 'senses.json'].map((f) => fetch('/subs/' + f).then((r) => r.json())));
+    SENSE = PFSense.create(map, senses);
+  } catch (e) { SENSE = null; }
+}
 async function loadProjects() {
+  await loadSense();
   const list = await api('/api/projects');
   $('#project').innerHTML = list.map((p) => `<option value="${p.id}">${p.title}</option>`).join('');
   if (list.length) loadProject(list[0].id);
@@ -140,10 +182,11 @@ async function loadProjects() {
 async function loadProject(id) {
   pid = id;
   P = await api('/api/project?id=' + encodeURIComponent(id));
+  fits = P.swears.map((s, i) => autoFit(i, { engine: 'omni' }));
   $('#list').innerHTML = P.swears.map((s, i) => `
     <div class="item" data-i="${i}">
       <div class="t">${fmt(s.start)}</div>
-      <div class="w"><b>${s.swear}</b> → ${s.say}</div>
+      <div class="w"><b>${s.swear}</b> → ${fits[i] ? fits[i].say : s.say}</div>
       <div class="s">speaker ${s.speaker == null ? '?' : s.speaker + 1}${s.phrase ? ' · “' + s.phrase + '”' : ''}</div>
     </div>`).join('');
   $('#list').onclick = (e) => { const it = e.target.closest('.item'); if (it) select(+it.dataset.i); };
@@ -151,10 +194,12 @@ async function loadProject(id) {
 }
 
 function select(i) {
-  cur = i; last = null;
+  cur = i; last = null; refitWord = false;
   document.querySelectorAll('.item').forEach((el) => el.classList.toggle('sel', +el.dataset.i === i));
   const s = P.swears[i];
-  settings = { ...P.defaults, ...(P.presets[String(s.speaker)] || {}), say: s.say, ref_pieces: null, allowed: null };
+  settings = { ...P.defaults, ...(P.presets[String(s.speaker)] || {}), say: s.say, ref_pieces: null, allowed: null, place: null, span: null, auto: false };
+  fitNote = '';
+  if (autoFitOn) applyFit(autoFit(i, settings));
   render();
 }
 
@@ -170,6 +215,12 @@ function render() {
     <div class="legend"><span><i style="background:var(--accent)"></i>the swear</span><span><i style="background:var(--sub);border:2px solid var(--ok)"></i>time given to the substitute</span><span><i style="background:var(--ok)"></i>how long it will speak</span><span><i style="outline:2px solid var(--accent);background:var(--word)"></i>neighbouring word that gets covered</span></div>
     <div id="fit" class="fit"></div>
 
+    <div class="dial wide"><span>Voice model</span>
+      <div class="seg" id="engine"><button data-engine="omni" class="${settings.engine !== 'index' ? 'on' : ''}">OmniVoice</button><button data-engine="index" class="${settings.engine === 'index' ? 'on' : ''}">+ IndexTTS2 emotion</button></div></div>
+    <div class="info" style="margin:-6px 0 6px 180px">${settings.engine === 'index' ? 'OmniVoice says the whole sentence with your word in their voice; IndexTTS2 says it again with the feeling of the original sentence, and your word is cut out of that. Slower (≈10–30 s).' : 'The word as OmniVoice makes it from their voice sample.'}</div>
+    <div class="dial" id="emo-row" style="${settings.engine === 'index' ? '' : 'display:none'}"><span>Copy the emotion</span>
+      <div><input type="range" id="emo" min="0" max="1" step="0.05" value="${settings.emo_alpha}"><div class="ends"><span>a little</span><span>fully</span></div></div>
+      <output id="emo-out">${(+settings.emo_alpha).toFixed(2)}</output></div>
     <div class="dial"><span>Substitute word</span><input type="text" id="say" value="${settings.say}"><span></span></div>
     <div class="dial"><span>Speed of the word</span>
       <div><input type="range" id="speed" min="0.5" max="2.5" step="0.05" value="${settings.speed}"><div class="ends"><span>slower</span><span>as made</span><span>faster</span></div></div>
@@ -182,11 +233,17 @@ function render() {
     <div class="dial"><span>Take extra time from</span>
       <div class="seg" id="take">${['before', 'both', 'after'].map((k) => `<button data-take="${k}" class="${settings.take === k ? 'on' : ''}">${k === 'both' ? 'both sides' : 'words ' + k}</button>`).join('')}</div>
       <button id="auto-time" title="Give it exactly the time it needs at this speed">Auto</button></div>
+    <div class="bar" style="margin:4px 0"><button id="b-fit" title="Pick the stand-in by meaning, the longest that fits between the words around it, and place it there">Auto-fit</button>
+      <button id="b-fit-word" title="Keep the word typed above; move it and set its time so it fits between the words">Fit this word</button>
+      <label><input type="checkbox" id="autofit" ${autoFitOn ? 'checked' : ''}> auto-fit when I open a swear</label></div>
+    <div class="info" id="fit-note">${fitNote}</div>
+    <div class="dial"><span>Position</span><span class="info" id="place-info">Drag the green box on the timeline to move the word.</span><button id="place-reset">At the swear</button></div>
 
     <div class="bar">
       <button id="b-orig">▶ Original</button>
       <button id="b-sub" ${last ? '' : 'disabled'}>▶ Substitute</button>
       <button id="b-word" ${last ? '' : 'disabled'}>▶ Word only</button>
+      <button id="b-sent" ${last && last.hasSentence ? '' : 'disabled'} style="${settings.engine === 'index' ? '' : 'display:none'}">▶ IndexTTS2 sentence</button>
       <button id="b-gen" class="primary">Regenerate</button>
       <label><input type="checkbox" id="autoplay" ${autoPlay ? 'checked' : ''}> regenerate &amp; play when I let go of a dial</label>
       <button id="b-save" ${sw.speaker == null ? 'disabled' : ''}>Save for speaker ${sw.speaker == null ? '' : sw.speaker + 1}</button>
@@ -211,15 +268,18 @@ function moreHtml(pieces) {
 
 // ───── live preview of timing ─────
 function updatePreview() {
-  const sw = P.swears[cur];
-  const pl = planGap(sw, settings);
+  const sw = spanned(P.swears[cur], settings);
+  const pl = planGap(P.swears[cur], settings);
+  $('#speed').value = settings.speed;
   $('#speed-out').textContent = (+settings.speed).toFixed(2) + '×';
   $('#allowed-out').textContent = (settings.allowed ? pl.allow.toFixed(2) : pl.allow.toFixed(2) + ' (auto)') + ' s';
   const sl = $('#allowed');
   if (!settings.allowed) sl.value = pl.allow;
   // Timeline window: 1.5 s either side of everything involved.
   const wEnd = pl.g0 + pl.word;
-  const t0 = Math.min(pl.g0, sw.start) - 1.5, t1 = Math.max(pl.g1, wEnd, sw.roomEnd) + 1.5;
+  let t0 = Math.min(pl.g0, sw.start) - 1.5, t1 = Math.max(pl.g1, wEnd, sw.roomEnd) + 1.5;
+  if (drag) [t0, t1] = [drag.t0, drag.t1];
+  win = { t0, t1 };
   const x = (t) => ((t - t0) / (t1 - t0)) * 100;
   const words = P.words.filter((w) => w.end > t0 && w.start < t1);
   const cutWords = [];
@@ -231,7 +291,9 @@ function updatePreview() {
   }).join('');
   const ticks = [];
   for (let t = Math.ceil(t0 * 2) / 2; t < t1; t += 0.5) ticks.push(`<div class="tick" style="left:${x(t)}%">${t.toFixed(1)}</div>`);
-  $('#timeline').innerHTML = html + `<div class="gap" style="left:${x(pl.g0)}%;width:${x(pl.g1) - x(pl.g0)}%"><span>“${settings.say}” ${pl.allow.toFixed(2)} s</span></div><div class="say" style="left:${x(pl.g0)}%;width:${x(wEnd) - x(pl.g0)}%;${pl.overrun ? 'background:var(--warn)' : ''}"></div>` + ticks.join('');
+  $('#timeline').innerHTML = html + `<div class="gap ${drag ? 'dragging' : ''}" title="Drag to move the word" style="left:${x(pl.g0)}%;width:${x(pl.g1) - x(pl.g0)}%"><span>“${settings.say}” ${pl.allow.toFixed(2)} s</span></div><div class="say" style="left:${x(pl.g0)}%;width:${x(wEnd) - x(pl.g0)}%;${pl.overrun ? 'background:var(--warn)' : ''}"></div>` + ticks.join('');
+  const shift = pl.g0 - sw.start;
+  $('#place-info').textContent = settings.place == null ? 'Drag the green box on the timeline to move the word.' : `Starts ${Math.abs(shift).toFixed(2)} s ${shift < 0 ? 'before' : 'after'} the swear (${settings.auto ? 'auto-fit' : 'dragged'}).`;
   const fit = $('#fit');
   const len = `${pl.word.toFixed(2)} s at ${(+settings.speed).toFixed(2)}× (${pl.natural.toFixed(2)} s as made${pl.measured ? '' : ', estimated until it\'s made'})`;
   if (pl.overrun) {
@@ -248,15 +310,16 @@ function bind() {
   const sw = P.swears[cur];
   const pieces = (P.voices[sw.speaker] || {}).pieces || [];
   const changed = () => { if (autoPlay) regenerate(); };
-  $('#say').oninput = (e) => { settings.say = e.target.value; $('#title-say').textContent = `“${settings.say}”`; updatePreview(); };
+  const manual = () => { settings.auto = false; };
+  $('#say').oninput = (e) => { manual(); settings.say = e.target.value; $('#title-say').textContent = `“${settings.say}”`; updatePreview(); };
   $('#say').onchange = changed;
-  $('#speed').oninput = (e) => { settings.speed = +e.target.value; updatePreview(); };
+  $('#speed').oninput = (e) => { manual(); settings.speed = +e.target.value; updatePreview(); };
   $('#speed').onchange = changed;
-  $('#allowed').oninput = (e) => { settings.allowed = +e.target.value; updatePreview(); };
+  $('#allowed').oninput = (e) => { manual(); settings.allowed = +e.target.value; updatePreview(); };
   $('#allowed').onchange = changed;
   $('#take').onclick = (e) => {
     const b = e.target.closest('[data-take]'); if (!b) return;
-    settings.take = b.dataset.take;
+    manual(); settings.take = b.dataset.take; settings.place = null;
     document.querySelectorAll('[data-take]').forEach((x) => x.classList.toggle('on', x === b));
     updatePreview(); changed();
   };
@@ -269,6 +332,40 @@ function bind() {
     updatePreview(); changed();
   };
   $('#autoplay').onchange = (e) => (autoPlay = e.target.checked);
+  $('#engine').onclick = (e) => {
+    const b = e.target.closest('[data-engine]'); if (!b || settings.engine === b.dataset.engine) return;
+    settings.engine = b.dataset.engine; last = null;
+    render(); changed();
+  };
+  $('#emo').oninput = (e) => { settings.emo_alpha = +e.target.value; $('#emo-out').textContent = settings.emo_alpha.toFixed(2); };
+  $('#emo').onchange = changed;
+  $('#place-reset').onclick = () => { manual(); settings.place = null; updatePreview(); changed(); };
+  $('#b-sent').onclick = () => playRendered('sentence');
+  $('#autofit').onchange = (e) => (autoFitOn = e.target.checked);
+  $('#b-fit').onclick = () => { refitWord = false; applyFit(autoFit(cur, settings)); render(); regenerate(); };
+  $('#b-fit-word').onclick = () => { refitWord = true; const f = autoFit(cur, settings, settings.say); applyFit(f); render(); regenerate(); };
+  // Drag the green box (time given to the word) to move where it's said.
+  const tl = $('#timeline');
+  tl.onpointerdown = (e) => {
+    if (!e.target.closest('.gap')) return;
+    e.preventDefault();
+    tl.setPointerCapture(e.pointerId);
+    drag = { x0: e.clientX, place0: planGap(sw, settings).g0, t0: win.t0, t1: win.t1, width: tl.clientWidth };
+    updatePreview();
+  };
+  tl.onpointermove = (e) => {
+    if (!drag) return;
+    const dt = ((e.clientX - drag.x0) / drag.width) * (drag.t1 - drag.t0);
+    manual(); settings.place = Math.max(0, Math.round((drag.place0 + dt) * 100) / 100);
+    updatePreview();
+  };
+  tl.onpointerup = tl.onpointercancel = (e) => {
+    if (!drag) return;
+    const moved = Math.abs(e.clientX - drag.x0) > 2;
+    drag = null;
+    updatePreview();
+    if (moved) changed();
+  };
   $('#b-orig').onclick = playOriginal;
   $('#b-sub').onclick = () => playRendered('context');
   $('#b-word').onclick = () => playRendered('word');
@@ -290,7 +387,8 @@ function bind() {
 function infoText(r) {
   const i = r.info;
   if (i.why) return i.why;
-  return `“${i.say}”: ${i.natural.toFixed(2)} s as made → ${i.seconds.toFixed(2)} s at ${(+settings.speed).toFixed(2)}×` + (i.made ? ` · made in ${r.seconds} s (${i.steps} steps, copied from ${i.reference.seconds} s of their speech)` : ` · ready in ${r.seconds} s (kept word, not remade)`);
+  const how = i.engine === 'index' ? (i.made ? ` · IndexTTS2 ${i.index_seconds} s, sentence “${i.sentence}”` : ' · IndexTTS2 (kept)') : '';
+  return `“${i.say}”: ${i.natural.toFixed(2)} s as made → ${i.seconds.toFixed(2)} s at ${(+settings.speed).toFixed(2)}×` + (i.made ? ` · made in ${r.seconds} s (${i.steps} steps, copied from ${i.reference.seconds} s of their speech)` : ` · ready in ${r.seconds} s (kept word, not remade)`) + how;
 }
 function setStatus(t, cls) { const el = $('#status'); el.textContent = t; el.className = 'status ' + (cls || ''); }
 function playUrl(u) { player.src = u; player.play(); }
@@ -309,11 +407,16 @@ async function regenerate() {
   try {
     const sw = P.swears[cur];
     last = await api('/api/render', { id: pid, index: cur, settings });
-    if (last.info.natural && last.info.seconds) measured[sw.speaker + '|' + (settings.say || sw.say).toLowerCase().trim()] = last.info.natural;
+    if (last.info.natural && last.info.seconds) measured[settings.engine + '|' + sw.speaker + '|' + (settings.say || sw.say).toLowerCase().trim()] = last.info.natural;
     if (P.swears[cur] === sw) {
       updatePreview();
-      $('#b-sub').disabled = false; $('#b-word').disabled = false;
+      $('#b-sub').disabled = false; $('#b-word').disabled = false; $('#b-sent').disabled = !last.hasSentence;
       setStatus(infoText(last));
+      // Now its real length is known: fit again; remake if that changes anything.
+      if (settings.auto && !pending) {
+        const f = autoFit(cur, settings, refitWord ? settings.say : null);
+        if (applyFit(f)) { render(); pending = true; } else { $('#fit-note').textContent = fitNote; }
+      }
       if (!pending) playRendered('context');
     }
   } catch (e) {
@@ -327,7 +430,7 @@ async function regenerate() {
 
 async function savePreset() {
   const sw = P.swears[cur];
-  const { say, ref_pieces, ...keep } = settings;
+  const { say, ref_pieces, place, span, auto, allowed, speed, ...keep } = settings;
   const r = await api('/api/presets', { id: pid, speaker: sw.speaker, settings: keep });
   P.presets = r.presets;
   setStatus(`Saved as speaker ${sw.speaker + 1}'s settings for this video.`);

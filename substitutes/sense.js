@@ -75,7 +75,9 @@
     }
 
     function rootOf(word) {
-      return roots.find((r) => r.re.test(word)) || null;
+      const w = String(word || '');
+      const stem = w.endsWith("'s") ? w.slice(0, -2) : w; // "fuck's" (fuck is)
+      return roots.find((r) => r.re.test(w) || r.re.test(stem)) || null;
     }
 
     // The rule that matches (or the root's default), or null if not a swear.
@@ -155,7 +157,7 @@
       return fit[fit.length - 1];
     }
 
-    return { tokenize, rootOf: (w) => (rootOf(w) || {}).name || null, senseOf, ruleFor, standIn, pick, say, seconds };
+    return { tokenize, rootOf: (w) => (rootOf(w) || {}).name || null, senseOf, ruleFor, standIn, pick, say, seconds, subsOf: (id) => subs[id] || null };
   }
 
   root.PFSense = { create, tokenize };

@@ -72,3 +72,25 @@ Models (in `companion/models`, downloaded by `install.sh`): Kim_Vocal_2
 (voice separation, 67 MB), wav2vec2-base-960h (word alignment, 378 MB) and
 WeSpeaker ResNet34 (who's speaking, 27 MB);
 the Whisper models go to the Hugging Face cache.
+
+## IndexTTS2 (editor only, optional)
+
+The editor's "+ IndexTTS2 emotion" voice model re-says the sentence around a
+swear in the OmniVoice voice with the original line's emotion
+(`index_tts_worker.py`). It runs in its own environment because its libraries
+are pinned differently:
+
+```bash
+git clone --depth 1 https://github.com/index-tts/index-tts.git companion/vendor/index-tts
+python3.11 -m venv companion/.venv-indextts
+companion/.venv-indextts/bin/pip install "torch==2.8.*" "torchaudio==2.8.*" "transformers==4.52.1" "tokenizers==0.21.0" "accelerate==1.8.1" "librosa==0.10.2.post1" "numpy==2.2.6" "numba==0.63.0" "safetensors==0.5.2" einops omegaconf sentencepiece "g2p-en==2.1.0" "json5==0.10.0" munch "descript-audiotools==0.7.2" "cn2an==0.5.22" "jieba==0.42.1" wetext textstat "ffmpeg-python==0.2.0" huggingface_hub soundfile matplotlib tqdm openai-whisper "modelscope==1.27.0" "pandas==2.3.2"
+companion/.venv-indextts/bin/pip install --no-deps -e companion/vendor/index-tts
+```
+
+Model files (~7.1 GB) go in `companion/vendor/index-tts/checkpoints/`:
+IndexTeam/IndexTTS-2 (all but the `qwen0.6bemo4-merge` folder), and in
+`checkpoints/aux/`: `w2v-bert-2.0` (facebook/w2v-bert-2.0: config,
+preprocessor config, model.safetensors), `maskgct/semantic_codec`
+(amphion/MaskGCT), `campplus` (funasr/campplus), `bigvgan`
+(nvidia/bigvgan_v2_22khz_80band_256x: config, generator). On the M4 it takes
+~12 s a sentence in half precision with one beam (after ~40 s to load).

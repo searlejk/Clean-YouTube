@@ -16,6 +16,15 @@ different stand-in, and none of them should be a tired "frick".
   pick its sense; then `pick(sense, seconds, swear, wordBefore)` gives the
   stand-in, with the swear's ending ("goof{}" → goofing / goofed) and without
   repeating the word before it ("oh" + "oh snap" → "snap").
+- `fit.js`: fits the stand-in into the time around the swear the way it's
+  done by hand in the editor: the free time is from the end of the word
+  before to the start of the word after; the longest stand-in that fits there
+  at its natural pace is used (else the shortest, sped up at most 1.35×); it's
+  placed over the swear, moved into the pause before if it would run into the
+  next word, and given exactly the time it needs. Rules can swap words around
+  the swear too ("what the fuck's going on" → "what is going on"). The editor
+  runs it when a swear is opened, then again with the word's real length once
+  it's made.
 - `evaluate.js`: how often the map picks the right sense on the sentences
   (`node substitutes/evaluate.js --split val --errors 20`).
 - `data/sentences.jsonl`: the sentences, each `{"sense", "text", "context",
